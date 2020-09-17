@@ -1,10 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
 #include "request.h"
 
 int numberOfColumns(FILE *ptr, char *filename)
 {
+    if(access(filename, F_OK) == -1)
+    {
+        printf("table does not exist\n");
+        exit(1);
+    }
     int count = 0;
     char lineTemp[200];
     ptr = fopen(filename, "r");
@@ -25,6 +32,7 @@ int numberOfColumns(FILE *ptr, char *filename)
         templine = strtok(NULL, del);
     }
     //printf("%d",count);
+    fclose(ptr);
     return count;
 
 }

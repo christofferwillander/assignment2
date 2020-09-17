@@ -1,13 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "request.h"
 
 
 void writeToFile(char *filename, FILE *ptr, char *name, char *dataT, int size, int check)
 {
     char charSize[10];
+    if(access(filename, F_OK) != -1)
+    {
+        printf("table already exists!\n");
+        exit(1);
+    }
     ptr = fopen(filename, "a");
+
     fputs(name, ptr);
     fputs(":", ptr);
     fputs(dataT, ptr);
@@ -34,17 +41,13 @@ void create(request_t *req)
     char *openFilePath;
     int check = 0;
 
-    //printf("hellu, create table: %s\n", req->table_name);
     fileName = req->table_name;
     
     char filePath[100] = "../../database/";
     char *totFile = strcat(filePath,fileName);
-    //strcat(totFile,extension);
-
 
     FILE *file;
 
-    
     column_t *end;
     column_t *temp = req->columns;
 

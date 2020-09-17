@@ -3,6 +3,7 @@
 
 #include "createTable.c"
 #include "insertToTable.c"
+#include "selectTable.c"
 #include "request.h"
 
 int main(int argc, char* argv[]) {
@@ -24,8 +25,12 @@ int main(int argc, char* argv[]) {
     case 4: //Insert into table
         insert(request);
         break;
+    case 5:
+        selectTable(request);
+        break;
     
     default:
+        printf("Unknown command");
         break;
     }
 
