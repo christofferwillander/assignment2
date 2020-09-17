@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "createTable.c"
+#include "insertToTable.c"
 #include "request.h"
 
 int main(int argc, char* argv[]) {
@@ -15,15 +16,24 @@ int main(int argc, char* argv[]) {
     }
 
     request = parse_request(argv[1]);
-    if(request->request_type == 0)
+    switch (request->request_type)
     {
+    case 0: //Create table
         create(request);
+        break;
+    case 4: //Insert into table
+        insert(request);
+        break;
+    
+    default:
+        break;
     }
 
+   // if(request->request_type == 0)
+  //  {
+  //      create(request);
+  //  }
 
-
-    print_request(request);
-
+    //print_request(request);
     destroy_request(request);
-
 }
