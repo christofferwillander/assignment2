@@ -4,6 +4,7 @@
 #include "createTable.c"
 #include "insertToTable.c"
 #include "selectTable.c"
+#include "showSchema.c"
 #include "request.h"
 
 int main(int argc, char* argv[]) {
@@ -22,6 +23,9 @@ int main(int argc, char* argv[]) {
     case 0: //Create table
         create(request);
         break;
+    case 2:
+        getSchema(request);
+        break;
     case 4: //Insert into table
         insert(request);
         break;
@@ -34,11 +38,5 @@ int main(int argc, char* argv[]) {
         break;
     }
 
-   // if(request->request_type == 0)
-  //  {
-  //      create(request);
-  //  }
-
-    //print_request(request);
     destroy_request(request);
 }
