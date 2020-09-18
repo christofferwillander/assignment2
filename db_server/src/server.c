@@ -8,75 +8,90 @@
 #include <unistd.h>
 #include <sys/errno.h>
 #include <arpa/inet.h>
-#define die(str) perror(str); exit(-1);
+#define terminate(str) perror(str); exit(-1);
 #define BUFFERSZ 512
 
-char *serve(int port) {
+void serve(int port) {
     int serverPort;
     int serverSocket, clientSocket;
+    pid_t parentid;
+
     char *receiveBuffer = malloc(BUFFERSZ);
-    char welcomeMessage[100] = "Hello! You have succesfully connected to the server. Send your request :)\n";
+    memset(receiveBuffer, 0, sizeof(receiveBuffer));
+
+    char welcomeMessage[100] = "Welcome! Please send your SQL query.\n";
     
     if (port == 0) {
         serverPort = 1337;
-        printf("Server running on default port: %d\n", serverPort);
+        printf("[+] Server started on default port: %d\n", serverPort);
     }
     else {
         serverPort = port;
-        printf("Server running on port: %d\n", serverPort);
+        printf("[+] Server started on port: %d\n", serverPort);
     }
 
     /* Creating IPV4 server socket using TCP (SOCK_STREAM) */
     if ((serverSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        die("socket");
+        terminate("[-] Error occurred when creating server socket");
     }
+    printf("[+] Socket was successfully created\n");
 
     /* Defining server address in sockaddr_in struct */
     struct sockaddr_in serverAddress;
+    memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(serverPort);
     serverAddress.sin_addr.s_addr = INADDR_ANY;
 
     /* Binding server socket to specified address, port */
     if(bind(serverSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1) {
-        die("bind");
+        terminate("[-] Error occurred when binding server socket");
     }
+    printf("[+] Socket binding to port %d was successful\n", serverPort);
 
     /* Starting to listen on server socket */
     if(listen(serverSocket, 10) == -1) {
-        die("listen");
+        terminate("[-] Error occurred when listening on server socket");
     }
+    printf("[+] Server listening for incoming connections on port %d\n", serverPort);
 
     /* Defining client address in sockaddr_in struct */
     struct sockaddr_in clientAddress;
+    memset(&clientAddress, 0, sizeof(clientAddress));
     int addressLength = sizeof(clientAddress);
     char clientIP[INET_ADDRSTRLEN];
 
-    /* Accepting client connections */
-    if((clientSocket = accept(serverSocket, (struct sockaddr*) &clientAddress, (socklen_t*) &addressLength)) == -1) {
-        die("accept");
-    }
-    else {
-        inet_ntop(AF_INET, &clientAddress.sin_addr, clientIP, sizeof(clientIP));
-        printf("Accepted connection from %s on port %i\n", clientIP, ntohs(clientAddress.sin_port));
-    }
+    while(1) {
+        /* Accepting client connections - this is a blocking call */
+        if((clientSocket = accept(serverSocket, (struct sockaddr*) &clientAddress, (socklen_t*) &addressLength)) == -1) {
+            terminate("[-] Error occurred when accepting new connection");
+        }
+        else {
+            inet_ntop(AF_INET, &clientAddress.sin_addr, clientIP, sizeof(clientIP));
+            printf("[*] New connection from %s:%i accepted\n", clientIP, ntohs(clientAddress.sin_port));
+        }
+        /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
+        if((parentid = fork()) == 0) {
+            /* Child process closes the listening server socket */
+            close(serverSocket);
 
-    /* Sending welcome message to client */
-    if((send(clientSocket, welcomeMessage, sizeof(welcomeMessage), 0)) == -1) {
-        die("send");
-    }
+            /* Sending welcome message to client */
+            if((send(clientSocket, welcomeMessage, sizeof(welcomeMessage), 0)) == -1) {
+                terminate("[-] Error occurred when sending payload to client");
+            }
 
-    /* Receiving data (SQL request) from client, placing in buffer */
-    if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
-        die("recv");
+            /* Infinite loop to continuously receive data from client */
+            while(1) {
+                /* Receiving data (SQL request) from client, placing in buffer */
+                if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
+                    terminate("[-] Error occurred when receiving data from client");
+                }
+                else {
+                printf("[*] Client sent: %s\n", receiveBuffer);
+                }
+            }
+        }
     }
-    else {
-    printf("Client sent: %s\n", receiveBuffer);
-    }
-
     /* Closing server socket */
     close(serverSocket);
-
-    /* Returning receiver buffer (pointer to char array) */
-    return receiveBuffer;
 }
