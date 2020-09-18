@@ -8,12 +8,14 @@
 #include <unistd.h>
 #include <sys/errno.h>
 #include <arpa/inet.h>
+#include "../include/request.h"
 #define terminate(str) perror(str); exit(-1);
-#define BUFFERSZ 512
+#define BUFFERSZ 1024
 
 void serve(int port) {
     int serverPort;
     int serverSocket, clientSocket;
+    request_t *request;
     pid_t parentid;
 
     char *receiveBuffer = malloc(BUFFERSZ);
@@ -87,11 +89,27 @@ void serve(int port) {
                     terminate("[-] Error occurred when receiving data from client");
                 }
                 else {
-                printf("[*] Client sent: %s\n", receiveBuffer);
+                    receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
+                    printf("[*] Client %s:%i sent: %s (%ld)\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
+                    request = parse_request(receiveBuffer);
+                    memset(receiveBuffer, 0, sizeof(receiveBuffer));
+
+                    if (request != NULL && request->request_type == RT_QUIT) {
+                        printf("[*] Disconnected client %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
+                        destroy_request(request);
+                        exit(0);
+                    }
+                    else if (request == NULL)
+                    {
+                        printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
+                    }
+                    
                 }
             }
         }
+        close(clientSocket);
     }
+
     /* Closing server socket */
     close(serverSocket);
 }

@@ -6,8 +6,6 @@
  
 int main(int argc, char* argv[]) {
     char *databasePath = "../../database/";
-    request_t *request;
-
     serve(0);
     
     /*
@@ -18,4 +16,4 @@ int main(int argc, char* argv[]) {
 
     free(receivedRequest); 
     destroy_request(request); */
-} 
+}
