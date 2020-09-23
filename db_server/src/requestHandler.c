@@ -9,7 +9,7 @@ void handleRequest(request_t *request, int clientSocket) {
     switch (request->request_type)
         {
         case RT_CREATE:
-            create(request);
+            create(request, clientSocket);
             break;
         case RT_SCHEMA:
             getSchema(request, clientSocket);

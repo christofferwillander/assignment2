@@ -109,7 +109,7 @@ void serve(int port) {
             /* Infinite loop to continuously receive data from client */
             while(1) {
                 /* Zeroing out receiving buffer */
-                memset(receiveBuffer, 0, sizeof(receiveBuffer));
+                memset(receiveBuffer, 0, BUFFERSZ);
 
                 /* Receiving data (SQL request) from client, placing in buffer */
                 if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
@@ -130,7 +130,7 @@ void serve(int port) {
                     receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
                     printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
                     request = parse_request(receiveBuffer);
-                    memset(receiveBuffer, 0, sizeof(receiveBuffer));
+                    memset(receiveBuffer, 0, BUFFERSZ);
 
                     if (request != NULL && request->request_type == RT_QUIT) {
                         send(clientSocket, "Bye-bye now!\n", sizeof("Bye-bye now!\n"), 0);
