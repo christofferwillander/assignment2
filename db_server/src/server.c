@@ -9,8 +9,10 @@
 #include <unistd.h>
 #include <sys/errno.h>
 #include <arpa/inet.h>
+
 #include "../include/request.h"
 #include "requestHandler.c"
+
 #define terminate(str) perror(str); exit(-1);
 #define BUFFERSZ 1024
 const char databasePath[] = "../../database/";
@@ -19,6 +21,8 @@ void serve(int port);
 void freeChild();
 
 int main(int argc, char* argv[]) {
+
+    /* If port argument is present */
     if (argc == 2) {
         serve(atoi(argv[1]));
     }
@@ -34,8 +38,7 @@ void serve(int port) {
     request_t *request;
     pid_t pid;
 
-    char *receiveBuffer = malloc(BUFFERSZ);
-    memset(receiveBuffer, 0, sizeof(receiveBuffer));
+    char *receiveBuffer = NULL;
 
     char welcomeMessage[100] = "Welcome! Please provide your SQL query.\n";
     
@@ -92,6 +95,9 @@ void serve(int port) {
         if((pid = fork()) == 0) {
             printf("[+] Child client process was spawned (pid: %d)\n", getpid());
 
+            /* Allocating memory for child receive buffer */
+            receiveBuffer = malloc(BUFFERSZ);
+
             /* Child process closes the listening server socket */
             close(serverSocket);
 
@@ -108,10 +114,16 @@ void serve(int port) {
                 /* Receiving data (SQL request) from client, placing in buffer */
                 if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
                     terminate("[-] Error occurred when receiving data from client");
-                }
+                } /* If client closes terminal session */
                 else if (strlen(receiveBuffer) == 0){
                     printf("[*] Disconnected client %s:%i - client closed terminal session\n", clientIP, ntohs(clientAddress.sin_port));
+                    
+                    /* Close client socket */
                     close(clientSocket);
+
+                    /* Free receive buffer memory */
+                    free(receiveBuffer);
+
                     exit(0);
                 }
                 else {
@@ -123,8 +135,15 @@ void serve(int port) {
                     if (request != NULL && request->request_type == RT_QUIT) {
                         send(clientSocket, "Bye-bye now!\n", sizeof("Bye-bye now!\n"), 0);
                         printf("[*] Disconnected client %s:%i - client sent .quit command\n", clientIP, ntohs(clientAddress.sin_port));
+                        /* Close client socket */
                         close(clientSocket);
+
+                        /* Free receive buffer memory */
+                        free(receiveBuffer);
+
+                        /* Destroy request containing .quit command */
                         destroy_request(request);
+
                         exit(0);
                     }
                     else if (request == NULL)
@@ -133,6 +152,7 @@ void serve(int port) {
                         send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
                     }
                     else if (request != NULL) {
+                        /* Send request to request handler to dispatch to proper function */
                         handleRequest(request, clientSocket);
                     }
                     
