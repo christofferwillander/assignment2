@@ -4,7 +4,7 @@
 #include "listTables.c"
 #include "selectTable.c"
 #include "showSchema.c"
-extern const char databasePath[];
+extern char databasePath[];
 void handleRequest(request_t *request, int clientSocket) {
     switch (request->request_type)
         {
@@ -12,7 +12,7 @@ void handleRequest(request_t *request, int clientSocket) {
             create(request);
             break;
         case RT_SCHEMA:
-            getSchema(request);
+            getSchema(request, clientSocket);
             break;
         case RT_INSERT:
             insert(request);

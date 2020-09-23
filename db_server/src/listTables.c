@@ -4,7 +4,7 @@
 #include <string.h>
 
 
-void listTables(const char* databasePath, int clientSocket) {
+void listTables(char* databasePath, int clientSocket) {
     /* Directory pointer, directory entry pointer */
     DIR *directory = opendir(databasePath);
     struct dirent *directoryEntry;

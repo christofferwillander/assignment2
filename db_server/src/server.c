@@ -15,7 +15,7 @@
 
 #define terminate(str) perror(str); exit(-1);
 #define BUFFERSZ 1024
-const char databasePath[] = "../../database/";
+char databasePath[] = "../../database/";
 
 void serve(int port);
 void freeChild();
@@ -161,7 +161,7 @@ void serve(int port) {
         }
         else {
             /* Parent closes client socket and continues to accept method to accept new connections */
-            close(clientSocket);
+            close(clientSocket); 
             
             /* Parent calls signal handler freeChild to wait for children to exit (prevents zombie processes) */
             signal(SIGCHLD, freeChild);
