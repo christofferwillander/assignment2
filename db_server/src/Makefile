@@ -1,4 +1,4 @@
-CFLAGS=-Iinclude -L../lib
+CFLAGS=-I../include -L../lib
 LIB=-lrequest
 
 server: server.c
