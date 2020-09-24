@@ -41,7 +41,7 @@ void serve(int port) {
 
     char *receiveBuffer = NULL;
 
-    char welcomeMessage[100] = "Welcome! Please provide your SQL query.\n";
+    char welcomeMessage[100] = "Welcome! Please provide your SQL query\n";
     
     if (port == 0) {
         serverPort = 1337;
@@ -147,12 +147,20 @@ void serve(int port) {
 
                         exit(0);
                     }
-                    else if (request == NULL)
-                    {
+                    else if (request == NULL) {
                         printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
                         printf("[-] Parser returned: %s\n", error);
+
+                        /* If invalid request is not just an empty string, else... */
+                        if (strcmp(error, "syntax error, unexpected $end") != 0) {
+                            send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
+                        }
+                        else {
+                            send(clientSocket, "Please provide a request\n", sizeof("Please provide a request\n"), 0);
+                        }   
+
+                        /* Free character array for error message from parser */
                         free(error);
-                        send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
                     }
                     else if (request != NULL) {
                         /* Send request to request handler to dispatch to proper function */
@@ -177,7 +185,7 @@ void serve(int port) {
 
 void freeChild() {
     pid_t pid;
-
+    
     if((pid = wait(NULL)) == -1){
         printf("[-] Problem occurred when terminating child (pid: %d)\n", pid);
     }
