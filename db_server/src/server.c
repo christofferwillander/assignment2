@@ -120,6 +120,7 @@ void serve(int port) {
                     printf("[*] Disconnected client %s:%i - client closed terminal session\n", clientIP, ntohs(clientAddress.sin_port));
                     
                     /* Close client socket */
+                    shutdown(clientSocket, SHUT_RDWR);
                     close(clientSocket);
 
                     /* Free receive buffer memory */
@@ -137,6 +138,7 @@ void serve(int port) {
                         send(clientSocket, "Bye-bye now!\n", sizeof("Bye-bye now!\n"), 0);
                         printf("[*] Disconnected client %s:%i - client sent .quit command\n", clientIP, ntohs(clientAddress.sin_port));
                         /* Close client socket */
+                        shutdown(clientSocket, SHUT_RDWR);
                         close(clientSocket);
 
                         /* Free receive buffer memory */
@@ -179,13 +181,14 @@ void serve(int port) {
         }
     }
 
+    shutdown(serverSocket, SHUT_RDWR);
     /* Closing server socket */
     close(serverSocket);
 }
 
 void freeChild() {
     pid_t pid;
-    
+
     if((pid = wait(NULL)) == -1){
         printf("[-] Problem occurred when terminating child (pid: %d)\n", pid);
     }
