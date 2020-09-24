@@ -36,6 +36,7 @@ void serve(int port) {
     int serverPort;
     int serverSocket, clientSocket;
     request_t *request;
+    char *error;
     pid_t pid;
 
     char *receiveBuffer = NULL;
@@ -129,7 +130,7 @@ void serve(int port) {
                 else {
                     receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
                     printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
-                    request = parse_request(receiveBuffer);
+                    request = parse_request(receiveBuffer, &error);
                     memset(receiveBuffer, 0, BUFFERSZ);
 
                     if (request != NULL && request->request_type == RT_QUIT) {
@@ -149,6 +150,8 @@ void serve(int port) {
                     else if (request == NULL)
                     {
                         printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
+                        printf("[-] Parser returned: %s\n", error);
+                        free(error);
                         send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
                     }
                     else if (request != NULL) {

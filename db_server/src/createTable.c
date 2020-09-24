@@ -80,6 +80,7 @@ void create(request_t *req, int clientSocket)
             temp = end;   
 
         }
+        send(clientSocket, "Table was succesfully created\n", sizeof("Table was succesfully created\n"), 0);
     }
     free(filePath);
 }
