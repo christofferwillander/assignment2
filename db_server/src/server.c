@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/errno.h>
+#include <ctype.h>
 #include <arpa/inet.h>
 
 #include "../include/request.h"
@@ -15,28 +16,83 @@
 
 #define terminate(str) perror(str); exit(-1);
 #define BUFFERSZ 1024
+#define NOARG 0
+#define PORTARG 1
+#define FILEARG 2
+
 char databasePath[] = "../../database/";
 
-void serve(int port);
+void serve(int port, char *logFile, int daemonize);
 void freeChild();
 
 int main(int argc, char* argv[]) {
+    int port = 0, daemonize = 0, isNumber = 0, findCMDParam = NOARG;
+    char *logFile = NULL;
+    char usage[100] = "Usage: ";
+    strcat(usage, argv[0]);
+    strcat(usage, " [-p port] [-d] [-l logfile] [-h]\n");
+    char helpStr[200] = "-p port - Listen to port with port number port\n-d - Run as a daemon as opposed to a program\n-l logfile - Log to file with name logfile (default is syslog)\n-h - Print help text\n";
 
-    /* If port argument is present */
-    if (argc == 2) {
-        serve(atoi(argv[1]));
-    }
-    else
-    {
-        serve(0);
-    } 
+    for (int i = 1; i < argc; i++) {
+        if (findCMDParam == NOARG) {
+            if (strcmp("-p", argv[i]) == 0) {
+                if ((argc - 1) > i) {
+                    findCMDParam = PORTARG;
+                }
+                else {
+                    printf("ERROR: Missing argument parameter\n%s", usage);
+                    exit(-1);
+                }
+            }
+            else if (strcmp("-d", argv[i]) == 0) {
+                printf("Daemonize parameter found (not yet implemented)\n");
+                daemonize = 1;
+                exit(0);
+            }
+            else if (strcmp("-h", argv[i]) == 0) {
+                printf("%s\n%s", usage, helpStr);
+                exit(0);
+            }
+            else if (strcmp("-l", argv[i]) == 0) {
+                if ((argc - 1) > i) {
+                    printf("Log file parameter found (");
+                    findCMDParam = FILEARG;
+                }
+                else {
+                    printf("ERROR: Missing argument parameter\n%s", usage);
+                    exit(-1);
+                }
+            }
+            else {
+                printf("ERROR: Incorrect input parameter\n%s", usage);
+                exit(-1);
+            }
+        }
+        else if (findCMDParam > NOARG) {
+            if (findCMDParam == PORTARG) {
+                for (int j = 0; j < strlen(argv[i]); j++) {
+                    if (isdigit(argv[i][j]) == 0) {
+                        printf("ERROR: Invalid port number\n%s", usage);
+                        exit(-1);
+                    }
+                }
 
-    for (int i = 0; i < argc; i++) {
-        
+                port = atoi(argv[i]);
+                findCMDParam = NOARG;
+            }
+            else if (findCMDParam == FILEARG) {
+                logFile = malloc(strlen(argv[i]));
+                strcpy(logFile, argv[i]);
+                printf("%s) (not yet implemented)\n", logFile);
+                exit(0);
+            }
+        }
     }
+
+    serve(port, logFile, daemonize);
 }
 
-void serve(int port) {
+void serve(int port, char *logFile, int daemonize) {
     int serverPort;
     int serverSocket, clientSocket;
     request_t *request;
