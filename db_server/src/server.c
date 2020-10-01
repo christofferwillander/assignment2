@@ -277,9 +277,13 @@ void daemonizeServer() {
     pid_t pid;
     struct rlimit resourceLimit;
     struct sigaction signalAction;
+    char pathBuffer[200];
 
     /* Clearing the file creation mask */
     umask(0);
+
+    /* Retrieving CWD path */
+    getcwd(pathBuffer, 200);
 
     /* Retrieving maximum number of FDs */
     if (getrlimit(RLIMIT_NOFILE, &resourceLimit) < 0) {
@@ -318,8 +322,8 @@ void daemonizeServer() {
         exit(EXIT_SUCCESS);
     }
 
-    if (chdir("/") < 0) {
-        perror("Could not change directory to /\n");
+    if (chdir(pathBuffer) < 0) {
+        perror("Could not change directory");
         exit(EXIT_FAILURE);
     }
 
