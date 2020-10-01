@@ -29,9 +29,10 @@
 #define FILEARG 2
 
 char databasePath[] = "../../database/";
-
+volatile sig_atomic_t runServer = 1;
 void serve(int port, char *logFile);
 void freeChild();
+void gracefulShutdown(int signum);
 void daemonizeServer();
 
 int main(int argc, char* argv[]) {
@@ -110,6 +111,12 @@ void serve(int port, char *logFile) {
     char *error;
     pid_t pid;
 
+    struct sigaction shutdownServer;
+
+    shutdownServer.sa_handler = gracefulShutdown;
+    sigemptyset(&shutdownServer.sa_mask);
+    shutdownServer.sa_flags = 0;
+
     char *receiveBuffer = NULL;
 
     char welcomeMessage[100] = "Welcome! Please provide your SQL query\n";
@@ -152,60 +159,58 @@ void serve(int port, char *logFile) {
     int addressLength = sizeof(clientAddress);
     char clientIP[INET_ADDRSTRLEN];
 
-    while(1) {
+    while(runServer) {
+        /* Signal for detecting CTRL + C - calls signal handler gracefulShutdown */
+        sigaction(SIGINT, &shutdownServer, NULL);
+
         /* Accepting client connections - this is a blocking call */
         if((clientSocket = accept(serverSocket, (struct sockaddr*) &clientAddress, (socklen_t*) &addressLength)) == -1) {
-            terminate("[-] Error occurred when accepting new connection");
+            if (runServer) {
+                terminate("[-] Error occurred when accepting new connection");
+            }
         }
         else {
             inet_ntop(AF_INET, &clientAddress.sin_addr, clientIP, sizeof(clientIP));
             printf("[*] New connection from %s:%i accepted\n", clientIP, ntohs(clientAddress.sin_port));
         }
-        /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
-        if((pid = fork()) == 0) {
-            printf("[+] Child client process was spawned (pid: %d)\n", getpid());
 
-            /* Allocating memory for child receive buffer */
-            receiveBuffer = malloc(BUFFERSZ);
+        if (runServer) {
+            /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
+            if((pid = fork()) == 0) {
+                printf("[+] Child client process was spawned (pid: %d)\n", getpid());
 
-            /* Child process closes the listening server socket */
-            close(serverSocket);
+                /* Allocating memory for child receive buffer */
+                receiveBuffer = malloc(BUFFERSZ);
 
-            /* Sending welcome message to client */
-            if((send(clientSocket, welcomeMessage, sizeof(welcomeMessage), 0)) == -1) {
-                terminate("[-] Error occurred when sending payload to client");
-            }
+                /* Child process closes the listening server socket */
+                close(serverSocket);
 
-            /* Infinite loop to continuously receive data from client */
-            while(1) {
-                /* Zeroing out receiving buffer */
-                memset(receiveBuffer, 0, BUFFERSZ);
-
-                /* Receiving data (SQL request) from client, placing in buffer */
-                if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
-                    terminate("[-] Error occurred when receiving data from client");
-                } /* If client closes terminal session */
-                else if (strlen(receiveBuffer) == 0){
-                    printf("[*] Disconnected client %s:%i - client closed terminal session\n", clientIP, ntohs(clientAddress.sin_port));
-                    
-                    /* Close client socket */
-                    shutdown(clientSocket, SHUT_RDWR);
-                    close(clientSocket);
-
-                    /* Free receive buffer memory */
-                    free(receiveBuffer);
-
-                    exit(EXIT_SUCCESS);
+                /* Sending welcome message to client */
+                if((send(clientSocket, welcomeMessage, sizeof(welcomeMessage), 0)) == -1) {
+                    terminate("[-] Error occurred when sending payload to client");
                 }
-                else {
-                    receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
-                    printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
-                    request = parse_request(receiveBuffer, &error);
+
+                /* Infinite loop to continuously receive data from client */
+                while(1) {
+                    /* Zeroing out receiving buffer */
                     memset(receiveBuffer, 0, BUFFERSZ);
 
-                    if (request != NULL && request->request_type == RT_QUIT) {
-                        send(clientSocket, "Bye-bye now!\n", sizeof("Bye-bye now!\n"), 0);
-                        printf("[*] Disconnected client %s:%i - client sent .quit command\n", clientIP, ntohs(clientAddress.sin_port));
+                    /* Receiving data (SQL request) from client, placing in buffer */
+                    if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
+                        if(runServer) {
+                            terminate("[-] Error occurred when receiving data from client");
+                        }
+                        else {
+                            send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+                            shutdown(clientSocket, SHUT_RDWR);
+                            close(clientSocket);
+                            exit(EXIT_SUCCESS);
+                        }
+                        
+                    } /* If client closes terminal session */
+                    else if (strlen(receiveBuffer) == 0){
+                        printf("[*] Disconnected client %s:%i - client closed terminal session\n", clientIP, ntohs(clientAddress.sin_port));
+                        
                         /* Close client socket */
                         shutdown(clientSocket, SHUT_RDWR);
                         close(clientSocket);
@@ -213,48 +218,72 @@ void serve(int port, char *logFile) {
                         /* Free receive buffer memory */
                         free(receiveBuffer);
 
-                        /* Destroy request containing .quit command */
-                        destroy_request(request);
-
                         exit(EXIT_SUCCESS);
                     }
-                    else if (request == NULL) {
-                        printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
-                        printf("[-] Parser returned: %s\n", error);
+                    else {
+                        receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
+                        printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
+                        request = parse_request(receiveBuffer, &error);
+                        memset(receiveBuffer, 0, BUFFERSZ);
 
-                        /* If invalid request is not just an empty string, else... */
-                        if (strcmp(error, "syntax error, unexpected $end") != 0) {
-                            send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
+                        if (request != NULL && request->request_type == RT_QUIT) {
+                            send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+                            printf("[*] Disconnected client %s:%i - client sent .quit command\n", clientIP, ntohs(clientAddress.sin_port));
+                            /* Close client socket */
+                            shutdown(clientSocket, SHUT_RDWR);
+                            close(clientSocket);
+
+                            /* Free receive buffer memory */
+                            free(receiveBuffer);
+
+                            /* Destroy request containing .quit command */
+                            destroy_request(request);
+
+                            exit(EXIT_SUCCESS);
                         }
-                        else {
-                            send(clientSocket, "Please provide a request\n", sizeof("Please provide a request\n"), 0);
-                        }   
+                        else if (request == NULL) {
+                            printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
+                            printf("[-] Parser returned: %s\n", error);
 
-                        /* Free character array for error message from parser */
-                        free(error);
+                            /* If invalid request is not just an empty string, else... */
+                            if (strcmp(error, "syntax error, unexpected $end") != 0) {
+                                send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
+                            }
+                            else {
+                                send(clientSocket, "Please provide a request\n", sizeof("Please provide a request\n"), 0);
+                            }   
+
+                            /* Free character array for error message from parser */
+                            free(error);
+                        }
+                        else if (request != NULL) {
+                            /* Send request to request handler to dispatch to proper function */
+                            handleRequest(request, clientSocket);
+                        }
+                        
                     }
-                    else if (request != NULL) {
-                        /* Send request to request handler to dispatch to proper function */
-                        handleRequest(request, clientSocket);
-                    }
-                    
                 }
             }
-        }
-        else {
-            /* Parent closes client socket and continues to accept method to accept new connections */
-            close(clientSocket); 
-            
-            /* Parent calls signal handler freeChild to wait for children to exit (prevents zombie processes) */
-            signal(SIGCHLD, freeChild);
+            else {
+                /* Parent closes client socket and continues to accept method to accept new connections */
+                close(clientSocket); 
+                
+                /* Parent calls signal handler freeChild to wait for children to exit (prevents zombie processes) */
+                signal(SIGCHLD, freeChild);
+            }
         }
     }
+
+    printf("\n[*] Server received shutdown signal - performing graceful shutdown\n");
     /* Shutting down server socket */
+    printf("[*] Shutting down server socket\n");
     shutdown(serverSocket, SHUT_RDWR);
     
     /* Closing server socket */
+    printf("[*] Closing server socket\n");
     close(serverSocket);
 
+    printf("[*] Freeing allocated memory\n");
     /* Freeing memory */
     if (logFile != NULL) {
         free(logFile);
@@ -270,6 +299,10 @@ void freeChild() {
     else{
         printf("[+] Child was succesfully terminated (pid: %d)\n", pid);
     }
+}
+
+void gracefulShutdown(int signum) {
+    runServer = 0;
 }
 
 void daemonizeServer() {
