@@ -240,10 +240,16 @@ void serve(int port, char *logFile, int daemonize) {
             signal(SIGCHLD, freeChild);
         }
     }
-
+    /* Shutting down server socket /*
     shutdown(serverSocket, SHUT_RDWR);
+    
     /* Closing server socket */
     close(serverSocket);
+
+    /* Freeing memory */
+    if (logFile != NULL) {
+        free(logFile);
+    }
 }
 
 void freeChild() {
