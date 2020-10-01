@@ -52,14 +52,17 @@ struct request_t {
  * parses database server command into request_t struct
  *
  * request_string: string containing one database command
+ * parse_error: pointer to character pointer for error reporting
  *
  * returns: request_t filled with the information contained in the
  *          parsed command string
  *
  * errors: returns NULL in case of error
- *         request_string is replaced with error message
+ *         allocates memory for error message and makes parse_error pointer
+ *         point to it -- NOTE: this message buffer needs to be freed by the
+ *         caller
  * */
-request_t* parse_request(char* request_string);
+request_t* parse_request(char* request_string, char** parse_error);
 /*
  * Function: print_request
  * -----------------------

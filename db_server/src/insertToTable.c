@@ -3,7 +3,11 @@
 #include <string.h>
 #include <unistd.h>
 
+<<<<<<< HEAD
 #include "request.h"
+=======
+#include "../include/request.h"
+>>>>>>> christoffer
 
 int numberOfColumns(FILE *ptr, char *filename)
 {
