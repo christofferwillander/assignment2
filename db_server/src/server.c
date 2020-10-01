@@ -1,20 +1,28 @@
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+#include <sys/errno.h>
+
 #include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include <stdio.h>
 #include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/errno.h>
 #include <ctype.h>
-#include <arpa/inet.h>
+#include <syslog.h>
+#include <fcntl.h>
+#include <signal.h>
 
 #include "../include/request.h"
 #include "requestHandler.c"
 
-#define terminate(str) perror(str); exit(-1);
+#define terminate(str) perror(str); exit(EXIT_FAILURE);
 #define BUFFERSZ 1024
 #define NOARG 0
 #define PORTARG 1
@@ -22,8 +30,9 @@
 
 char databasePath[] = "../../database/";
 
-void serve(int port, char *logFile, int daemonize);
+void serve(int port, char *logFile);
 void freeChild();
+void daemonizeServer();
 
 int main(int argc, char* argv[]) {
     int port = 0, daemonize = 0, isNumber = 0, findCMDParam = NOARG;
@@ -41,17 +50,16 @@ int main(int argc, char* argv[]) {
                 }
                 else {
                     printf("ERROR: Missing argument parameter\n%s", usage);
-                    exit(-1);
+                    exit(EXIT_FAILURE);
                 }
             }
             else if (strcmp("-d", argv[i]) == 0) {
-                printf("Daemonize parameter found (not yet implemented)\n");
+                printf("Daemonize parameter found\n");
                 daemonize = 1;
-                exit(0);
             }
             else if (strcmp("-h", argv[i]) == 0) {
                 printf("%s\n%s", usage, helpStr);
-                exit(0);
+                exit(EXIT_SUCCESS);
             }
             else if (strcmp("-l", argv[i]) == 0) {
                 if ((argc - 1) > i) {
@@ -60,12 +68,12 @@ int main(int argc, char* argv[]) {
                 }
                 else {
                     printf("ERROR: Missing argument parameter\n%s", usage);
-                    exit(-1);
+                    exit(EXIT_FAILURE);
                 }
             }
             else {
                 printf("ERROR: Incorrect input parameter\n%s", usage);
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
         }
         else if (findCMDParam > NOARG) {
@@ -73,7 +81,7 @@ int main(int argc, char* argv[]) {
                 for (int j = 0; j < strlen(argv[i]); j++) {
                     if (isdigit(argv[i][j]) == 0) {
                         printf("ERROR: Invalid port number\n%s", usage);
-                        exit(-1);
+                        exit(EXIT_FAILURE);
                     }
                 }
 
@@ -84,16 +92,20 @@ int main(int argc, char* argv[]) {
                 logFile = malloc(strlen(argv[i]));
                 strcpy(logFile, argv[i]);
                 printf("%s) (not yet implemented)\n", logFile);
-                exit(0);
+                exit(EXIT_SUCCESS);
             }
         }
     }
 
-    serve(port, logFile, daemonize);
+    if (daemonize > 0) {
+        printf("[+] Daemonizing server on port: %d  \n", port);
+        daemonizeServer();
+    }
+
+    serve(port, logFile);
 }
 
-void serve(int port, char *logFile, int daemonize) {
-    int serverPort;
+void serve(int port, char *logFile) {
     int serverSocket, clientSocket;
     request_t *request;
     char *error;
@@ -103,13 +115,11 @@ void serve(int port, char *logFile, int daemonize) {
 
     char welcomeMessage[100] = "Welcome! Please provide your SQL query\n";
     
-    if (port == 0) {
-        serverPort = 1337;
-        printf("[+] Server started on default port: %d (pid: %d)\n", serverPort, getpid());
+    if (port == 1337) {
+        printf("[+] Server started on default port: %d (pid: %d)\n", port, getpid());
     }
     else {
-        serverPort = port;
-        printf("[+] Server started on port: %d (pid: %d)\n", serverPort, getpid());
+        printf("[+] Server started on port: %d (pid: %d)\n", port, getpid());
     }
 
     /* Creating IPV4 server socket using TCP (SOCK_STREAM) */
@@ -122,20 +132,20 @@ void serve(int port, char *logFile, int daemonize) {
     struct sockaddr_in serverAddress;
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(serverPort);
+    serverAddress.sin_port = htons(port);
     serverAddress.sin_addr.s_addr = INADDR_ANY;
 
     /* Binding server socket to specified address, port */
     if(bind(serverSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1) {
         terminate("[-] Error occurred when binding server socket");
     }
-    printf("[+] Socket binding to port %d was successful\n", serverPort);
+    printf("[+] Socket binding to port %d was successful\n", port);
 
     /* Starting to listen on server socket */
     if(listen(serverSocket, 10) == -1) {
         terminate("[-] Error occurred when listening on server socket");
     }
-    printf("[+] Server listening for incoming connections on port %d\n", serverPort);
+    printf("[+] Server listening for incoming connections on port %d\n", port);
 
     /* Defining client address in sockaddr_in struct */
     struct sockaddr_in clientAddress;
@@ -186,7 +196,7 @@ void serve(int port, char *logFile, int daemonize) {
                     /* Free receive buffer memory */
                     free(receiveBuffer);
 
-                    exit(0);
+                    exit(EXIT_SUCCESS);
                 }
                 else {
                     receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
@@ -207,7 +217,7 @@ void serve(int port, char *logFile, int daemonize) {
                         /* Destroy request containing .quit command */
                         destroy_request(request);
 
-                        exit(0);
+                        exit(EXIT_SUCCESS);
                     }
                     else if (request == NULL) {
                         printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
@@ -240,7 +250,7 @@ void serve(int port, char *logFile, int daemonize) {
             signal(SIGCHLD, freeChild);
         }
     }
-    /* Shutting down server socket /*
+    /* Shutting down server socket */
     shutdown(serverSocket, SHUT_RDWR);
     
     /* Closing server socket */
@@ -261,4 +271,67 @@ void freeChild() {
     else{
         printf("[+] Child was succesfully terminated (pid: %d)\n", pid);
     }
+}
+
+void daemonizeServer() {
+    int fileDesc0, fileDesc1, fileDesc2;
+    pid_t pid;
+    struct rlimit resourceLimit;
+    struct sigaction signalAction;
+
+    /* Clearing the file creation mask */
+    umask(0);
+
+    /* Retrieving maximum number of FDs */
+    if (getrlimit(RLIMIT_NOFILE, &resourceLimit) < 0) {
+        perror("ERROR: Could not retreive maximum FDs\n");
+        exit(EXIT_FAILURE);
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        perror("ERROR: Could not fork\n");
+        exit(EXIT_FAILURE);
+    }
+    else if (pid != 0) {
+        exit(EXIT_SUCCESS);
+    }
+
+    if (setsid() < 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    signalAction.sa_handler = SIG_IGN;
+    sigemptyset(&signalAction.sa_mask);
+    signalAction.sa_flags = 0;
+
+    if (sigaction(SIGHUP, &signalAction, NULL) < 0) {
+        perror("ERROR: Could not ignore SIGHUP signal\n");
+        exit(EXIT_FAILURE);
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        perror("ERROR: Could not fork\n");
+        exit(EXIT_FAILURE);
+    }
+    else if (pid != 0) {
+        exit(EXIT_SUCCESS);
+    }
+
+    if (chdir("/") < 0) {
+        perror("Could not change directory to /\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if(resourceLimit.rlim_max == RLIM_INFINITY) {
+        resourceLimit.rlim_max = 1024;
+    }
+    for (int i = 0; i < resourceLimit.rlim_max; i++) {
+        close(i);
+    }
+
+    fileDesc0 = open("/dev/null", O_RDWR);
+    fileDesc1 = dup(0);
+    fileDesc2 = dup(0);
 }
