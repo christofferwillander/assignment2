@@ -35,7 +35,7 @@ void freeChild();
 void daemonizeServer();
 
 int main(int argc, char* argv[]) {
-    int port = 0, daemonize = 0, isNumber = 0, findCMDParam = NOARG;
+    int port = 1337, daemonize = 0, isNumber = 0, findCMDParam = NOARG;
     char *logFile = NULL;
     char usage[100] = "Usage: ";
     strcat(usage, argv[0]);
@@ -54,7 +54,6 @@ int main(int argc, char* argv[]) {
                 }
             }
             else if (strcmp("-d", argv[i]) == 0) {
-                printf("Daemonize parameter found\n");
                 daemonize = 1;
             }
             else if (strcmp("-h", argv[i]) == 0) {
