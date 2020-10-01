@@ -3,11 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 
-<<<<<<< HEAD
-#include "request.h"
-=======
 #include "../include/request.h"
->>>>>>> christoffer
 
 
 void selectTable(request_t *req)

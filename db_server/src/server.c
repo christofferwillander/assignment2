@@ -30,6 +30,10 @@ int main(int argc, char* argv[]) {
     {
         serve(0);
     } 
+
+    for (int i = 0; i < argc; i++) {
+        
+    }
 }
 
 void serve(int port) {
