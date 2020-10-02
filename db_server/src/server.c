@@ -18,26 +18,34 @@
 #include <syslog.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <time.h>
 
 #include "../include/request.h"
 #include "requestHandler.c"
 
-#define terminate(str) perror(str); exit(EXIT_FAILURE);
 #define BUFFERSZ 1024
 #define NOARG 0
 #define PORTARG 1
 #define FILEARG 2
 
+#define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+
+char *logPath = NULL;
 char databasePath[] = "../../database/";
 volatile sig_atomic_t runServer = 1;
-void serve(int port, char *logFile);
+
+void terminate(char *str);
+void serve(int port);
 void freeChild();
 void gracefulShutdown(int signum);
 void daemonizeServer();
+void serverLog(char *msg, int type);
+char *stringConcatenator(char* str1, char* str2, int num);
 
 int main(int argc, char* argv[]) {
     int port = 1337, daemonize = 0, isNumber = 0, findCMDParam = NOARG;
-    char *logFile = NULL;
     char usage[100] = "Usage: ";
     strcat(usage, argv[0]);
     strcat(usage, " [-p port] [-d] [-l logfile] [-h]\n");
@@ -63,7 +71,6 @@ int main(int argc, char* argv[]) {
             }
             else if (strcmp("-l", argv[i]) == 0) {
                 if ((argc - 1) > i) {
-                    printf("Log file parameter found (");
                     findCMDParam = FILEARG;
                 }
                 else {
@@ -89,10 +96,10 @@ int main(int argc, char* argv[]) {
                 findCMDParam = NOARG;
             }
             else if (findCMDParam == FILEARG) {
-                logFile = malloc(strlen(argv[i]));
-                strcpy(logFile, argv[i]);
-                printf("%s) (not yet implemented)\n", logFile);
-                exit(EXIT_SUCCESS);
+                logPath = malloc(strlen(argv[i]) + strlen(".log") + 1);
+                strcpy(logPath, argv[i]);
+                strcat(logPath, ".log");
+                findCMDParam = NOARG;
             }
         }
     }
@@ -101,11 +108,14 @@ int main(int argc, char* argv[]) {
         printf("[+] Daemonizing server on port: %d  \n", port);
         daemonizeServer();
     }
+    else {
+        openlog("SQL Server", LOG_PID | LOG_NDELAY, LOG_USER);
+    }
 
-    serve(port, logFile);
+    serve(port);
 }
 
-void serve(int port, char *logFile) {
+void serve(int port) {
     int serverSocket, clientSocket;
     request_t *request;
     char *error;
@@ -124,21 +134,30 @@ void serve(int port, char *logFile) {
     ignoreChild.sa_flags = SA_RESTART;
 
     char *receiveBuffer = NULL;
+    char *tempStr1 = NULL, *tempStr2 = NULL;
 
     char welcomeMessage[100] = "Welcome! Please provide your SQL query\n";
     
+    tempStr1 = stringConcatenator("Created parent server instance (pid: ", "", getpid());
+    tempStr2 = stringConcatenator(tempStr1, ")", -1);
+    serverLog(tempStr2, SUCCESS);
+    free(tempStr1);
+    free(tempStr2);
+
     if (port == 1337) {
-        printf("[+] Server started on default port: %d (pid: %d)\n", port, getpid());
+        serverLog("Server started on default port: 1337", SUCCESS);
     }
     else {
-        printf("[+] Server started on port: %d (pid: %d)\n", port, getpid());
+        tempStr1 = stringConcatenator("Server started on port: ", "", port);
+        serverLog(tempStr1, SUCCESS);
+        free(tempStr1);
     }
 
     /* Creating IPV4 server socket using TCP (SOCK_STREAM) */
     if ((serverSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        terminate("[-] Error occurred when creating server socket");
+        terminate("Error occurred when creating server socket: ");
     }
-    printf("[+] Socket was successfully created\n");
+    serverLog("Socket was successfully created", SUCCESS);
 
     /* Defining server address in sockaddr_in struct */
     struct sockaddr_in serverAddress;
@@ -149,15 +168,23 @@ void serve(int port, char *logFile) {
 
     /* Binding server socket to specified address, port */
     if(bind(serverSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1) {
-        terminate("[-] Error occurred when binding server socket");
+        terminate("Error occurred when binding server socket: ");
     }
-    printf("[+] Socket binding to port %d was successful\n", port);
+
+    tempStr1 = stringConcatenator("Socket binding to port ", "", port);
+    tempStr2 = stringConcatenator(tempStr1, " was succesful", -1);
+    serverLog(tempStr2, SUCCESS);
+    free(tempStr1);
+    free(tempStr2);
 
     /* Starting to listen on server socket */
     if(listen(serverSocket, 10) == -1) {
-        terminate("[-] Error occurred when listening on server socket");
+        terminate("Error occurred when listening on server socket: ");
     }
-    printf("[+] Server listening for incoming connections on port %d\n", port);
+
+    tempStr1 = stringConcatenator("Server listening for incoming connections on port ", "", port);
+    serverLog(tempStr1, SUCCESS);
+    free(tempStr1);
 
     /* Defining client address in sockaddr_in struct */
     struct sockaddr_in clientAddress;
@@ -172,19 +199,28 @@ void serve(int port, char *logFile) {
         /* Accepting client connections - this is a blocking call */
         if((clientSocket = accept(serverSocket, (struct sockaddr*) &clientAddress, (socklen_t*) &addressLength)) == -1) {
             if (runServer) {
-                terminate("[-] Error occurred when accepting new connection");
+                terminate("Error occurred when accepting new connection: ");
             }
         }
         else {
             inet_ntop(AF_INET, &clientAddress.sin_addr, clientIP, sizeof(clientIP));
-            printf("[*] New connection from %s:%i accepted\n", clientIP, ntohs(clientAddress.sin_port));
+
+            tempStr1 = stringConcatenator("Accepted new connection - ", clientIP, -1);
+            tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+            serverLog(tempStr2, INFO);
+            free(tempStr1);
+            free(tempStr2);
         }
 
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
+                tempStr1 = stringConcatenator("Child process was spawned (pid: ", "", getpid());
+                tempStr2 = stringConcatenator(tempStr1, ")", -1);
+                serverLog(tempStr2, SUCCESS);
+                free(tempStr1);
+                free(tempStr2);
 
-                printf("[+] Child client process was spawned (pid: %d)\n", getpid());
 
                 /* Allocating memory for child receive buffer */
                 receiveBuffer = malloc(BUFFERSZ);
@@ -194,7 +230,7 @@ void serve(int port, char *logFile) {
 
                 /* Sending welcome message to client */
                 if((send(clientSocket, welcomeMessage, sizeof(welcomeMessage), 0)) == -1) {
-                    terminate("[-] Error occurred when sending payload to client");
+                    terminate("Error occurred when sending payload to client: ");
                 }
 
                 /* Infinite loop to continuously receive data from client */
@@ -205,7 +241,7 @@ void serve(int port, char *logFile) {
                     /* Receiving data (SQL request) from client, placing in buffer */
                     if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
                         if(runServer) {
-                            terminate("[-] Error occurred when receiving data from client");
+                            terminate("Error occurred when receiving data from client: ");
                         }
                         else {
                             send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
@@ -216,7 +252,11 @@ void serve(int port, char *logFile) {
                         
                     } /* If client closes terminal session */
                     else if (strlen(receiveBuffer) == 0){
-                        printf("[*] Disconnected client %s:%i - client closed terminal session\n", clientIP, ntohs(clientAddress.sin_port));
+                        tempStr1 = stringConcatenator("Disconnected client (client closed terminal session) - ", clientIP, -1);
+                        tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+                        serverLog(tempStr2, 2);
+                        free(tempStr1);
+                        free(tempStr2);
                         
                         /* Close client socket */
                         shutdown(clientSocket, SHUT_RDWR);
@@ -229,13 +269,19 @@ void serve(int port, char *logFile) {
                     }
                     else {
                         receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
-                        printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
+                        //printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
                         request = parse_request(receiveBuffer, &error);
                         memset(receiveBuffer, 0, BUFFERSZ);
 
                         if (request != NULL && request->request_type == RT_QUIT) {
                             send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
-                            printf("[*] Disconnected client %s:%i - client sent .quit command\n", clientIP, ntohs(clientAddress.sin_port));
+
+                            tempStr1 = stringConcatenator("Disconnected client (client sent .quit command) - ", clientIP, -1);
+                            tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+                            serverLog(tempStr2, INFO);
+                            free(tempStr1);
+                            free(tempStr2);
+
                             /* Close client socket */
                             shutdown(clientSocket, SHUT_RDWR);
                             close(clientSocket);
@@ -249,8 +295,15 @@ void serve(int port, char *logFile) {
                             exit(EXIT_SUCCESS);
                         }
                         else if (request == NULL) {
-                            printf("[-] Invalid request received from %s:%i\n", clientIP, ntohs(clientAddress.sin_port));
-                            printf("[-] Parser returned: %s\n", error);
+                            tempStr1 = stringConcatenator("Invalid request received from client - ", clientIP, -1);
+                            tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+                            serverLog(tempStr2, ERROR);
+                            free(tempStr1);
+                            free(tempStr2);
+
+                            tempStr1 = stringConcatenator("Parser returned error: ", error, -1);
+                            serverLog(tempStr1, ERROR);
+                            free(tempStr1);
 
                             /* If invalid request is not just an empty string, else... */
                             if (strcmp(error, "syntax error, unexpected $end") != 0) {
@@ -281,29 +334,49 @@ void serve(int port, char *logFile) {
         }
     }
 
-    printf("\n[*] Server received shutdown signal - performing graceful shutdown\n");
+    serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
+    sleep(1);
+
     /* Shutting down server socket */
-    printf("[*] Shutting down server socket\n");
+    serverLog("Shutting down server socket", SUCCESS);
     shutdown(serverSocket, SHUT_RDWR);
-    
+    sleep(1);
+
     /* Closing server socket */
-    printf("[*] Closing server socket\n");
+    serverLog("Closing server socket", SUCCESS);
     close(serverSocket);
+    sleep(1);
 
     /* Freeing memory */
-    if (logFile != NULL) {
-        printf("[*] Freeing allocated memory\n");
-        free(logFile);
+    if (logPath != NULL) {
+        serverLog("Freeing allocated memory", SUCCESS);
+        sleep(1);
+        free(logPath);
+        logPath = NULL;
     }
+
+     /* Closing connection to syslog server */
+    serverLog("Closing server log", SUCCESS);
+    closelog();
 }
 
 void freeChild() {
     pid_t pid;
+    char *tempStr1, *tempStr2;
+
     if((pid = waitpid(-1, NULL, WNOHANG)) == -1){
-        printf("[-] Problem occurred when terminating child (pid: %d)\n", pid);
+        tempStr1 = stringConcatenator("Problem occurred when terminating child (pid: ", "", pid);
+        tempStr2 = stringConcatenator(tempStr1, ")", -1);
+        serverLog(tempStr2, 0);
+        free(tempStr1);
+        free(tempStr2);
     }
     else{
-        printf("[+] Child was succesfully terminated (pid: %d)\n", pid);
+        tempStr1 = stringConcatenator("Child was succesfully terminated (pid: ", "", pid);
+        tempStr2 = stringConcatenator(tempStr1, ")", -1);
+        serverLog(tempStr2, 0);
+        free(tempStr1);
+        free(tempStr2);
     }
 }
 
@@ -326,13 +399,13 @@ void daemonizeServer() {
 
     /* Retrieving maximum number of FDs */
     if (getrlimit(RLIMIT_NOFILE, &resourceLimit) < 0) {
-        perror("ERROR: Could not retreive maximum FDs\n");
+        perror("ERROR: Could not retreive maximum FDs");
         exit(EXIT_FAILURE);
     }
 
     pid = fork();
     if (pid < 0) {
-        perror("ERROR: Could not fork\n");
+        perror("ERROR: Could not fork");
         exit(EXIT_FAILURE);
     }
     else if (pid != 0) {
@@ -348,13 +421,13 @@ void daemonizeServer() {
     signalAction.sa_flags = 0;
 
     if (sigaction(SIGHUP, &signalAction, NULL) < 0) {
-        perror("ERROR: Could not ignore SIGHUP signal\n");
+        perror("ERROR: Could not ignore SIGHUP signal");
         exit(EXIT_FAILURE);
     }
 
     pid = fork();
     if (pid < 0) {
-        perror("ERROR: Could not fork\n");
+        perror("ERROR: Could not fork");
         exit(EXIT_FAILURE);
     }
     else if (pid != 0) {
@@ -362,7 +435,7 @@ void daemonizeServer() {
     }
 
     if (chdir(pathBuffer) < 0) {
-        perror("Could not change directory");
+        perror("ERROR: Could not change directory");
         exit(EXIT_FAILURE);
     }
 
@@ -376,4 +449,67 @@ void daemonizeServer() {
     fileDesc0 = open("/dev/null", O_RDWR);
     fileDesc1 = dup(0);
     fileDesc2 = dup(0);
+
+    openlog("SQL Server Daemon", LOG_PID | LOG_NDELAY, LOG_USER);
+}
+
+void serverLog(char *msg, int type) {
+    FILE* fp;
+    time_t rawTime = time(NULL);
+    struct tm *hrTime = localtime(&rawTime);
+    char currentTime[25];
+    strftime(currentTime, 25, "%Y-%m-%d %H:%M:%S", hrTime);
+
+    if (type == 0) {
+        syslog(LOG_NOTICE, "%s", msg);
+        printf("%s [+] %s\n", currentTime, msg);
+    }
+    else if (type == 1) {
+        syslog(LOG_ERR, "%s", msg);
+        printf("%s [-] %s\n", currentTime, msg);
+    }
+    else if (type == 2) {
+        syslog(LOG_INFO, "%s\n", msg);
+        printf("%s [*] %s\n", currentTime, msg);
+    }
+
+    if (logPath != NULL) {
+        fp = fopen(logPath, "a");
+        if (type == 0) {
+            fprintf(fp, "%s [+] %s\n", currentTime, msg);
+        }
+        else if (type == 1) {
+            fprintf(fp, "%s [-] %s\n", currentTime, msg);
+        }
+        else if (type == 2) {
+            fprintf(fp, "%s [*] %s\n", currentTime, msg);
+        }
+        fclose(fp);
+    }
+}
+
+char *stringConcatenator(char *str1, char *str2, int num) {
+    char *concatStr = NULL;
+    char numStr[10];
+
+    if (num == -1) {
+        concatStr = malloc(strlen(str1) + strlen(str2) + 1);
+        strcpy(concatStr, str1);
+        strcat(concatStr, str2);
+    }
+    else {
+        concatStr = malloc(strlen(str1) + strlen(str2) + 11);
+        sprintf(numStr, "%d", num);
+        strcpy(concatStr, str1);
+        strcat(concatStr, str2);
+        strcat(concatStr, numStr);
+    }
+    return concatStr;
+}
+
+void terminate (char *str) {
+    char* fullError = stringConcatenator(str, strerror(errno), -1);
+    serverLog(fullError, ERROR);
+    free(fullError);
+    exit(EXIT_FAILURE);
 }
