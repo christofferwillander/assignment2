@@ -111,11 +111,17 @@ void serve(int port, char *logFile) {
     char *error;
     pid_t pid;
 
+    /* Signal for graceful shutdown of server instance */
     struct sigaction shutdownServer;
-
     shutdownServer.sa_handler = gracefulShutdown;
     sigemptyset(&shutdownServer.sa_mask);
     shutdownServer.sa_flags = 0;
+
+     /* Signal for ignoring (freeing) terminated child processes */
+    struct sigaction ignoreChild;
+    ignoreChild.sa_handler = freeChild;
+    sigemptyset(&ignoreChild.sa_mask);
+    ignoreChild.sa_flags = SA_RESTART;
 
     char *receiveBuffer = NULL;
 
@@ -177,6 +183,7 @@ void serve(int port, char *logFile) {
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
+
                 printf("[+] Child client process was spawned (pid: %d)\n", getpid());
 
                 /* Allocating memory for child receive buffer */
@@ -269,7 +276,7 @@ void serve(int port, char *logFile) {
                 close(clientSocket); 
                 
                 /* Parent calls signal handler freeChild to wait for children to exit (prevents zombie processes) */
-                signal(SIGCHLD, freeChild);
+                sigaction(SIGCHLD, &ignoreChild, NULL);
             }
         }
     }
@@ -283,17 +290,16 @@ void serve(int port, char *logFile) {
     printf("[*] Closing server socket\n");
     close(serverSocket);
 
-    printf("[*] Freeing allocated memory\n");
     /* Freeing memory */
     if (logFile != NULL) {
+        printf("[*] Freeing allocated memory\n");
         free(logFile);
     }
 }
 
 void freeChild() {
     pid_t pid;
-
-    if((pid = wait(NULL)) == -1){
+    if((pid = waitpid(-1, NULL, WNOHANG)) == -1){
         printf("[-] Problem occurred when terminating child (pid: %d)\n", pid);
     }
     else{
