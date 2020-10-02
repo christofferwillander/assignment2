@@ -10,7 +10,7 @@ int numberOfColumns(FILE *ptr, char *filename)
     if(access(filename, F_OK) == -1)
     {
         printf("table does not exist\n");
-        exit(1);
+        //exit(1);
     }
     int count = 0;
     char lineTemp[200];
