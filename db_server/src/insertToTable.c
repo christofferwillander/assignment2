@@ -4,14 +4,11 @@
 #include <unistd.h>
 
 #include "../include/request.h"
+extern char databasePath[];
 
 int numberOfColumns(FILE *ptr, char *filename)
 {
-    if(access(filename, F_OK) == -1)
-    {
-        printf("table does not exist\n");
-        //exit(1);
-    }
+
     int count = 0;
     char lineTemp[200];
     ptr = fopen(filename, "r");
@@ -39,68 +36,72 @@ int numberOfColumns(FILE *ptr, char *filename)
 
 void insertToFile(char *filename, FILE *ptr, char *value, int check)
 {
-    char charSize[10];
     ptr = fopen(filename, "a");
     if(check != 1)
     {
-        fputs(value,ptr);
-        fputs(":", ptr);
+        //fputs(value,ptr);
+        //fputs(":", ptr);
+        fprintf(ptr, "%s:", value);
     }
     else
     {
-        fputs(value,ptr);    
-        fputs("\n",ptr);
+        //fputs(value,ptr);    
+        //fputs("\n",ptr);
+        fprintf(ptr, "%s\n", value);
     }
     
     fclose(ptr);
 }
 
-void insert(request_t *req)
+void insertToTable(request_t *req, int clientSocket)
 {
-    char *fileName;
     char *intValue;
     char *charValue;
     int columnCount=0;
-    fileName = req->table_name;
-    char filePath[100] = "../../database/";
-    char *totFile = strcat(filePath,fileName);
-    
-    FILE *file;
-    FILE *linePtr;
-    int columnsNr= 0;
-    int check = 0;
-    columnCount = numberOfColumns(linePtr, totFile);
+    char *filePath = malloc(strlen(databasePath) + strlen(req->table_name) + 1);
+    strcpy(filePath, databasePath);
+    strcat(filePath,req->table_name);
 
-    column_t *end;
-    column_t *temp = req->columns;
-
-    while(temp != NULL)
+    if(access(filePath, F_OK) == -1)
     {
-        columnsNr++;
-        if(columnsNr == columnCount)
-        {
-            check = 1;
-        }
-        if(temp->data_type != 0)
-        {
-            //data type is varchar
-            charValue=temp->char_val;
-            insertToFile(totFile, file, charValue, check);
-
-        }
-        else
-        {
-            //data typ is int
-            sprintf(intValue, "%d", temp->int_val);
-            insertToFile(totFile, file, intValue, check);
-
-        }
-
-        end=temp->next;
-        temp = end;   
-
+        send(clientSocket, "ERROR: Table does not exist\n", strlen("ERROR: Table does not exist\n"), 0);
     }
+    else
+    {
+        FILE *file;
+        FILE *linePtr;
+        int columnsNr= 0;
+        int check = 0;
+        columnCount = numberOfColumns(linePtr, filePath);
 
+        column_t *end;
+        column_t *temp = req->columns;
 
+        while(temp != NULL)
+        {
+            columnsNr++;
+            if(columnsNr == columnCount)
+            {
+                check = 1;
+            }
+            if(temp->data_type != 0)
+            {
+                //data type is varchar
+                charValue=temp->char_val;
+                insertToFile(filePath, file, charValue, check);
+
+            }
+            else
+            {
+                //data typ is int
+                sprintf(intValue, "%d", temp->int_val);
+                insertToFile(filePath, file, intValue, check);
+
+            }
+            end=temp->next;
+            temp = end;   
+        }
+        send(clientSocket, "Successfully added to table\n", strlen("Successfully added to table\n"), 0);
+    }
+    free(filePath);
 }
-

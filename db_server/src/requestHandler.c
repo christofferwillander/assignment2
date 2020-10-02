@@ -27,7 +27,7 @@ void handleRequest(request_t *request, int clientSocket) {
         case RT_INSERT:
             /* To be adjusted to support socket communications */
             printf("[+] Insert to table request received (%s)\n", request->table_name);
-            insert(request);
+            insertToTable(request, clientSocket);
             break;
         case RT_SELECT:
             /* To be adjusted to support socket communications */
