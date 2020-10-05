@@ -121,9 +121,13 @@ void serve(int port) {
     char *error;
     pid_t pid;
 
-    struct timespec sleepTime;
-    sleepTime.tv_sec = 0;
-    sleepTime.tv_nsec = 500000000;
+    struct timespec sleepTime1;
+    sleepTime1.tv_sec = 0;
+    sleepTime1.tv_nsec = 500000000;
+
+    struct timespec sleepTime2;
+    sleepTime2.tv_sec = 1;
+    sleepTime2.tv_nsec = 0;
 
     /* Signal for graceful shutdown of server instance */
     struct sigaction shutdownServer;
@@ -148,7 +152,7 @@ void serve(int port) {
     free(tempStr1);
     free(tempStr2);
 
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime1, NULL);
     
     if (port == 1337) {
         serverLog("Server started on default port: 1337", SUCCESS);
@@ -159,7 +163,7 @@ void serve(int port) {
         free(tempStr1);
     }
 
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime1, NULL);
 
     /* Creating IPV4 server socket using TCP (SOCK_STREAM) */
     if ((serverSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -167,7 +171,7 @@ void serve(int port) {
     }
     serverLog("Socket was successfully created", SUCCESS);
 
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime1, NULL);
 
     /* Defining server address in sockaddr_in struct */
     struct sockaddr_in serverAddress;
@@ -187,7 +191,7 @@ void serve(int port) {
     free(tempStr1);
     free(tempStr2);
 
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime1, NULL);
 
     /* Starting to listen on server socket */
     if(listen(serverSocket, 10) == -1) {
@@ -259,6 +263,15 @@ void serve(int port) {
                             send(clientSocket, "Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
                             shutdown(clientSocket, SHUT_RDWR);
                             close(clientSocket);
+
+                            /* Free receive buffer memory */
+                            tempStr1 = stringConcatenator("Freeing receiver buffer memory (pid: ", "", getpid());
+                            tempStr2 = stringConcatenator(tempStr1, ")", -1);
+                            serverLog(tempStr2, INFO);
+                            free(tempStr1);
+                            free(tempStr2);
+                            
+                            free(receiveBuffer);
                             exit(EXIT_SUCCESS);
                         }
                         
@@ -365,22 +378,22 @@ void serve(int port) {
     }
     printf("\n");
     serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime2, NULL);
 
     /* Shutting down server socket */
     serverLog("Shutting down server socket", SUCCESS);
     shutdown(serverSocket, SHUT_RDWR);
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime2, NULL);
 
     /* Closing server socket */
     serverLog("Closing server socket", SUCCESS);
     close(serverSocket);
-    nanosleep(&sleepTime, NULL);
+    nanosleep(&sleepTime2, NULL);
 
     /* Freeing memory */
     if (logPath != NULL) {
         serverLog("Freeing allocated memory", SUCCESS);
-        nanosleep(&sleepTime, NULL);
+        nanosleep(&sleepTime2, NULL);
         free(logPath);
         logPath = NULL;
     }
