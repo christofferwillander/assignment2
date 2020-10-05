@@ -121,6 +121,10 @@ void serve(int port) {
     char *error;
     pid_t pid;
 
+    struct timespec sleepTime;
+    sleepTime.tv_sec = 0;
+    sleepTime.tv_nsec = 500000000;
+
     /* Signal for graceful shutdown of server instance */
     struct sigaction shutdownServer;
     shutdownServer.sa_handler = gracefulShutdown;
@@ -144,6 +148,8 @@ void serve(int port) {
     free(tempStr1);
     free(tempStr2);
 
+    nanosleep(&sleepTime, NULL);
+    
     if (port == 1337) {
         serverLog("Server started on default port: 1337", SUCCESS);
     }
@@ -153,11 +159,15 @@ void serve(int port) {
         free(tempStr1);
     }
 
+    nanosleep(&sleepTime, NULL);
+
     /* Creating IPV4 server socket using TCP (SOCK_STREAM) */
     if ((serverSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         terminate("Error occurred when creating server socket: ");
     }
     serverLog("Socket was successfully created", SUCCESS);
+
+    nanosleep(&sleepTime, NULL);
 
     /* Defining server address in sockaddr_in struct */
     struct sockaddr_in serverAddress;
@@ -176,6 +186,8 @@ void serve(int port) {
     serverLog(tempStr2, SUCCESS);
     free(tempStr1);
     free(tempStr2);
+
+    nanosleep(&sleepTime, NULL);
 
     /* Starting to listen on server socket */
     if(listen(serverSocket, 10) == -1) {
@@ -353,22 +365,22 @@ void serve(int port) {
     }
     printf("\n");
     serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
-    sleep(1);
+    nanosleep(&sleepTime, NULL);
 
     /* Shutting down server socket */
     serverLog("Shutting down server socket", SUCCESS);
     shutdown(serverSocket, SHUT_RDWR);
-    sleep(1);
+    nanosleep(&sleepTime, NULL);
 
     /* Closing server socket */
     serverLog("Closing server socket", SUCCESS);
     close(serverSocket);
-    sleep(1);
+    nanosleep(&sleepTime, NULL);
 
     /* Freeing memory */
     if (logPath != NULL) {
         serverLog("Freeing allocated memory", SUCCESS);
-        sleep(1);
+        nanosleep(&sleepTime, NULL);
         free(logPath);
         logPath = NULL;
     }
