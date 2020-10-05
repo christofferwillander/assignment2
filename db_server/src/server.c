@@ -239,12 +239,12 @@ void serve(int port) {
                     memset(receiveBuffer, 0, BUFFERSZ);
 
                     /* Receiving data (SQL request) from client, placing in buffer */
-                    if(recv(clientSocket, receiveBuffer, BUFFERSZ, 0) == -1){
+                    if(recv(clientSocket, receiveBuffer, (BUFFERSZ - 1), 0) == -1){
                         if(runServer) {
                             terminate("Error occurred when receiving data from client: ");
                         }
                         else {
-                            send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+                            send(clientSocket, "Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
                             shutdown(clientSocket, SHUT_RDWR);
                             close(clientSocket);
                             exit(EXIT_SUCCESS);
@@ -270,6 +270,18 @@ void serve(int port) {
                     else {
                         receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
                         //printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
+                        tempStr1 = stringConcatenator("Client sent ", receiveBuffer, -1);
+                        tempStr2 = stringConcatenator(tempStr1, " (", (strlen(receiveBuffer) + 1));
+                        free(tempStr1);
+                        tempStr1 = stringConcatenator(tempStr2, " bytes) - ", -1);
+                        free(tempStr2);
+                        tempStr2 = stringConcatenator(tempStr1, clientIP, -1);
+                        free(tempStr1);
+                        tempStr1 = stringConcatenator(tempStr2, ":", ntohs(clientAddress.sin_port));
+                        serverLog(tempStr1, INFO);
+                        free(tempStr1);
+                        free(tempStr2);
+
                         request = parse_request(receiveBuffer, &error);
                         memset(receiveBuffer, 0, BUFFERSZ);
 
@@ -287,6 +299,12 @@ void serve(int port) {
                             close(clientSocket);
 
                             /* Free receive buffer memory */
+                            tempStr1 = stringConcatenator("Freeing receiver buffer memory (pid: ", "", getpid());
+                            tempStr2 = stringConcatenator(tempStr1, ")", -1);
+                            serverLog(tempStr2, INFO);
+                            free(tempStr1);
+                            free(tempStr2);
+                            
                             free(receiveBuffer);
 
                             /* Destroy request containing .quit command */
@@ -333,7 +351,7 @@ void serve(int port) {
             }
         }
     }
-
+    printf("\n");
     serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
     sleep(1);
 

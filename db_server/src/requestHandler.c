@@ -4,43 +4,66 @@
 #include "listTables.c"
 #include "selectTable.c"
 #include "showSchema.c"
+
+#define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+
 extern char databasePath[];
+extern char *stringConcatenator(char* str1, char* str2, int num);
+extern void serverLog(char* msg, int type);
 void handleRequest(request_t *request, int clientSocket) {
+    char *tempStr1 = NULL;
+
     switch (request->request_type)
         {
         case RT_CREATE:
-            printf("[+] Create table request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Create table request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             create(request, clientSocket);
             break;
         case RT_TABLES:
-            printf("[+] Tables command received\n");
+            serverLog("Tables command received", INFO);
             listTables(databasePath, clientSocket);
             break;
         case RT_SCHEMA:
-            printf("[+] Schema request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Schema request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             getSchema(request, clientSocket);
             break;
         case RT_DROP:
             /* To be implemented */
-            printf("[+] Drop request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Drop request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             break;
         case RT_INSERT:
             /* To be adjusted to support socket communications */
-            printf("[+] Insert to table request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Insert to table request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             insertToTable(request, clientSocket);
             break;
         case RT_SELECT:
             /* To be adjusted to support socket communications */
-            printf("[+] Select from table request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Select from table request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             selectTable(request);
             break;
         case RT_DELETE:
             /* To be implemented */
-            printf("[+] Delete request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Delete request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             break;
         case RT_UPDATE:
             /* To be adjusted to support socket communications */
-            printf("[+] Update request received (%s)\n", request->table_name);
+            tempStr1 = stringConcatenator("Update request received - ", request->table_name, -1);
+            serverLog(tempStr1, INFO);
+            free(tempStr1);
             break;
         default:
             /* This should never happen - something is really wrong if we end up here */
