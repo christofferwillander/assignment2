@@ -32,7 +32,7 @@
 #define ERROR 1
 #define INFO 2
 
-char *logPath = NULL;
+char *logPath = NULL, *errPath = NULL;
 char databasePath[] = "../../database/";
 volatile sig_atomic_t runServer = 1;
 
@@ -99,6 +99,11 @@ int main(int argc, char* argv[]) {
                 logPath = malloc(strlen(argv[i]) + strlen(".log") + 1);
                 strcpy(logPath, argv[i]);
                 strcat(logPath, ".log");
+
+                errPath = malloc(strlen(argv[i]) + strlen(".err") + 1);
+                strcpy(errPath, argv[i]);
+                strcat(errPath, ".err");
+
                 findCMDParam = NOARG;
             }
         }
@@ -391,11 +396,15 @@ void serve(int port) {
     nanosleep(&sleepTime2, NULL);
 
     /* Freeing memory */
-    if (logPath != NULL) {
+    if (logPath != NULL && errPath != NULL) {
         serverLog("Freeing allocated memory", SUCCESS);
         nanosleep(&sleepTime2, NULL);
+
         free(logPath);
         logPath = NULL;
+
+        free(errPath);
+        errPath = NULL;
     }
 
      /* Closing connection to syslog server */
@@ -516,15 +525,17 @@ void serverLog(char *msg, int type) {
         printf("%s [*] %s\n", currentTime, msg);
     }
 
-    if (logPath != NULL) {
-        fp = fopen(logPath, "a");
-        if (type == 0) {
+    if (logPath != NULL && errPath != NULL) {
+        if (type == SUCCESS) {
+            fp = fopen(logPath, "a");
             fprintf(fp, "%s [+] %s\n", currentTime, msg);
         }
-        else if (type == 1) {
+        else if (type == ERROR) {
+            fp = fopen(errPath, "a");
             fprintf(fp, "%s [-] %s\n", currentTime, msg);
         }
-        else if (type == 2) {
+        else if (type == INFO) {
+            fp = fopen(logPath, "a");
             fprintf(fp, "%s [*] %s\n", currentTime, msg);
         }
         fclose(fp);
