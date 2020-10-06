@@ -6,6 +6,10 @@
 #include "request.h"
 extern char databasePath[];
 
+void insertToFile(char *filename, FILE *ptr, char *value, int check);
+int numberOfColumns(FILE *ptr, char *filename);
+int checkBuffersize(request_t *req, char *filename);
+
 int numberOfColumns(FILE *ptr, char *filename)
 {
 
@@ -36,25 +40,67 @@ int numberOfColumns(FILE *ptr, char *filename)
 
 int checkBuffersize(request_t *req, char *filename)
 {
+    //printf("string2\n");
     column_t *end;
     column_t *temp = req->columns;
+    FILE *ptr = fopen(filename, "r");
+    FILE *filetemp;
+    char *temp1 = NULL, *temp2 = NULL, *temp3 = NULL;
+    temp1 = malloc(100);
+    int len = 0;
+    int dig = 0;
+    int columns = numberOfColumns(filetemp, filename);
+    int *sizearr = malloc(sizeof(request_t) * columns);
+    int sizecounter = 0;
+    int *sizearrCmd = malloc(sizeof(request_t) * columns);
+    int sizecounterCmd = 0;
+    int retval = 1;
 
     while (temp != NULL)
     {   
         if(temp->data_type == DT_VARCHAR)
         {
-            int len = strlen(temp->char_val);
-            printf("size- %d\t%d", len, temp->char_size);
-            if(len > temp->char_size)
-            {
-                return 0;
-            }
+            sizearr[sizecounter++] = strlen(temp->char_val);
         }
 
         end=temp->next;
         temp = end;    
     }
-    return 1;
+
+    fgets(temp1, 100, ptr);
+    temp3 = strstr(temp1, "\n");
+    len = (int)(temp3 - temp1) + 1;
+    temp2 = malloc(len);
+    memcpy(temp2, temp1, len);
+
+    for(int i = 0; i < strlen(temp2); i++)
+    {
+        if( isdigit(temp2[i]) != 0)
+        {
+            //printf("dig -> %c\n", temp2[i]);
+            sizearrCmd[sizecounterCmd++] = (temp2[i] - '0') + 2; // +2 compensate for the '' signs
+        }
+    }
+
+
+    for(int i = 0; i < sizecounterCmd; i++)
+    {
+        //printf("cmd-> %d\t vs\t org -> %d\n", sizearrCmd[i], sizearr[i]);
+        if(sizearrCmd[i] < sizearr[i])
+        {
+            retval = 0;
+        }
+
+    }
+
+    //printf("string2 %s\n", temp2);
+
+    free(sizearr);
+    free(sizearrCmd);
+    free(temp1);
+    free(temp2);
+    fclose(ptr);
+    return retval;
 
 }
 
@@ -115,6 +161,7 @@ void insertToTable(request_t *req, int clientSocket)
             }
             if(temp->data_type != 0)
             {
+                //printf("columns %d\n", columnCount);
                 //data type is varchar
                 charValue=temp->char_val;
                 insertToFile(filePath, file, charValue, check); 
@@ -123,8 +170,10 @@ void insertToTable(request_t *req, int clientSocket)
             else
             {
                 //data typ is int
+                intValue = malloc(sizeof(temp->int_val));
                 sprintf(intValue, "%d", temp->int_val);
                 insertToFile(filePath, file, intValue, check);
+                free(intValue);
 
             }
             end=temp->next;
@@ -135,4 +184,3 @@ void insertToTable(request_t *req, int clientSocket)
     }
     free(filePath);
 }
-
