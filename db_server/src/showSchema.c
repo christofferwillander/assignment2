@@ -17,7 +17,8 @@ void getSchema(request_t *req, int clientSocket)
     {
         send(clientSocket, "ERROR: Table does not exist\n", sizeof("ERROR: Table does not exist\n"), 0);
     }
-    else {
+    else 
+    {
         FILE *ptr;
         ptr = fopen(filePath, "r");
 
@@ -41,7 +42,7 @@ void getSchema(request_t *req, int clientSocket)
                 send(clientSocket, templine, strlen(templine), 0);
                 send(clientSocket, "\n", sizeof("\n"), 0);
             }
-            else
+            else if (templine != "\0")
             {
                 send(clientSocket, templine, strlen(templine), 0);
                 send(clientSocket, "\t", sizeof("\t"), 0);
@@ -52,6 +53,6 @@ void getSchema(request_t *req, int clientSocket)
 
         send(clientSocket, "\n", sizeof("\n"), 0);
         fclose(ptr);
-        free(filePath);
     }
+    free(filePath);
 }

@@ -27,7 +27,7 @@ void writeToFile(char *filename, FILE *ptr, char *name, char *dataT, int size, i
     fclose(ptr);
 }
 
-void create(request_t *req, int clientSocket)
+void createTable(request_t *req, int clientSocket)
 {
     char *fileName;
     char *cName;
@@ -44,7 +44,8 @@ void create(request_t *req, int clientSocket)
     {
         send(clientSocket, "ERROR: Table already exists\n", sizeof("ERROR: Table already exists\n"), 0);
     }
-    else {
+    else 
+    {
         FILE *file;
 
         column_t *end;
@@ -56,7 +57,7 @@ void create(request_t *req, int clientSocket)
             {
                 check = 1;
             }
-            //printf("name : %s\n",temp->name);
+            printf("name : %s\n",temp->name);
             cName=temp->name;
             if(temp->data_type != 0)
             {
@@ -69,6 +70,7 @@ void create(request_t *req, int clientSocket)
             else
             {
                 //printf("char value is an INT, no size\n");
+                size = 0;
                 dataType="INT";
             }
 
@@ -82,4 +84,3 @@ void create(request_t *req, int clientSocket)
     }
     free(filePath);
 }
-

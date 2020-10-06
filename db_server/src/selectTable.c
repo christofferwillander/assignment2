@@ -2,47 +2,57 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "request.h"
+extern char databasePath[];
 
-#include "../include/request.h"
-
-
-void selectTable(request_t *req)
+void selectTable(request_t *req, int clientSocket)
 {
-    char *filename = req->table_name;
-    char filePath[100] = "../../database/";
-    char *totFile = strcat(filePath,filename);
-    char output[256];
-    //char *fileout;
-    if(access(totFile, F_OK) == -1)
+    char *filePath = malloc(strlen(databasePath) + strlen(req->table_name) + 1);
+    strcpy(filePath, databasePath);
+    strcat(filePath,req->table_name);
+
+    if(access(filePath, F_OK) == -1)
     {
-        printf("table does not exists!\n");
-        exit(1);
+        send(clientSocket, "ERROR: Table does not exist\n", strlen("ERROR: Table does not exist\n"), 0);
     }
-
-    FILE *ptr;
-    ptr = fopen(totFile, "r");
-    char lineTemp[100];
-    fgets(lineTemp, 100, ptr);
-    int linesize = strlen(lineTemp);
-    fseek(ptr, linesize-1, SEEK_SET);
-
-    while(fgets(output, sizeof(output), ptr))
+    else
     {
-        for(int i = 0; i<strlen(output); i++)
+        FILE *ptr;
+        FILE *columns;
+        int colNr = numberOfColumns(columns, filePath);
+        int checkCol = 0;
+        ptr = fopen(filePath, "r");
+        char getString[256];
+        
+        //skip the first line
+        char lineTemp[100];
+        fgets(lineTemp, 100, ptr);
+        // start read on next line
+        int linesize = strlen(lineTemp);
+        fseek(ptr, linesize, SEEK_SET);
+        const char *del = ":";
+
+        while (fgets(getString, sizeof(getString), ptr) != NULL)
         {
-            if(output[i] != '\'')
+            char *templine = strtok(getString, del);
+            while (templine != NULL)
             {
-                if(output[i] != ':')
+                checkCol++;
+                if(checkCol != colNr)
                 {
-                    printf("%c", output[i]);
+                    send(clientSocket, templine, strlen(templine), 0);
+                    send(clientSocket, "\t", strlen("\t"), 0);
                 }
                 else
                 {
-                    printf("\t");
-                } 
+                    send(clientSocket, templine, strlen(templine), 0);
+                    checkCol = 0;
+                }
+                templine = strtok(NULL, del);
             }
         }
+        send(clientSocket, "\n", strlen("\n"), 0);
+        fclose(ptr);
     }
-    printf("\n");
-    fclose(ptr);
+    free(filePath);
 }

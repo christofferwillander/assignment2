@@ -3,7 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../include/request.h"
+#include "request.h"
 extern char databasePath[];
 
 int numberOfColumns(FILE *ptr, char *filename)
@@ -13,7 +13,7 @@ int numberOfColumns(FILE *ptr, char *filename)
     char lineTemp[200];
     ptr = fopen(filename, "r");
     fgets(lineTemp, 200, ptr);
-   // printf("%s", lineTemp);
+    //printf("line %s", lineTemp);
 
     const char *del = ":";
     char *templine = strtok(lineTemp, del);
@@ -23,19 +23,44 @@ int numberOfColumns(FILE *ptr, char *filename)
         
         if(strcmp(templine, "VARCHAR") == 0 || strcmp(templine, "INT") == 0)
         {
-            //printf("%s", templine);
+            //printf("temp %s", templine);
             count++;
         }
         templine = strtok(NULL, del);
     }
-    //printf("%d",count);
+    //printf("count %d",count);
     fclose(ptr);
     return count;
 
 }
 
+int checkBuffersize(request_t *req, char *filename)
+{
+    column_t *end;
+    column_t *temp = req->columns;
+
+    while (temp != NULL)
+    {   
+        if(temp->data_type == DT_VARCHAR)
+        {
+            int len = strlen(temp->char_val);
+            printf("size- %d\t%d", len, temp->char_size);
+            if(len > temp->char_size)
+            {
+                return 0;
+            }
+        }
+
+        end=temp->next;
+        temp = end;    
+    }
+    return 1;
+
+}
+
 void insertToFile(char *filename, FILE *ptr, char *value, int check)
 {
+
     ptr = fopen(filename, "a");
     if(check != 1)
     {
@@ -66,6 +91,10 @@ void insertToTable(request_t *req, int clientSocket)
     {
         send(clientSocket, "ERROR: Table does not exist\n", strlen("ERROR: Table does not exist\n"), 0);
     }
+    else if (checkBuffersize(req, filePath) == 0)
+    {
+       send(clientSocket, "VARCHAR exceeds size\n", sizeof("VARCHAR exceeds size\n"), 0);
+    }
     else
     {
         FILE *file;
@@ -88,7 +117,7 @@ void insertToTable(request_t *req, int clientSocket)
             {
                 //data type is varchar
                 charValue=temp->char_val;
-                insertToFile(filePath, file, charValue, check);
+                insertToFile(filePath, file, charValue, check); 
 
             }
             else
@@ -101,7 +130,9 @@ void insertToTable(request_t *req, int clientSocket)
             end=temp->next;
             temp = end;   
         }
-        send(clientSocket, "Successfully added to table\n", strlen("Successfully added to table\n"), 0);
+        send(clientSocket, "Successfully added to table\n", sizeof("Successfully added to table\n"), 0);
+        
     }
     free(filePath);
 }
+

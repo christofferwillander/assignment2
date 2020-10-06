@@ -4,6 +4,7 @@
 #include "listTables.c"
 #include "selectTable.c"
 #include "showSchema.c"
+#include "dropTable.c"
 
 #define SUCCESS 0
 #define ERROR 1
@@ -21,7 +22,7 @@ void handleRequest(request_t *request, int clientSocket) {
             tempStr1 = stringConcatenator("Create table request received - ", request->table_name, -1);
             serverLog(tempStr1, INFO);
             free(tempStr1);
-            create(request, clientSocket);
+            createTable(request, clientSocket);
             break;
         case RT_TABLES:
             serverLog("Tables command received", INFO);
@@ -37,6 +38,7 @@ void handleRequest(request_t *request, int clientSocket) {
             /* To be implemented */
             tempStr1 = stringConcatenator("Drop request received - ", request->table_name, -1);
             serverLog(tempStr1, INFO);
+            drop(request, clientSocket);
             free(tempStr1);
             break;
         case RT_INSERT:
@@ -51,7 +53,7 @@ void handleRequest(request_t *request, int clientSocket) {
             tempStr1 = stringConcatenator("Select from table request received - ", request->table_name, -1);
             serverLog(tempStr1, INFO);
             free(tempStr1);
-            selectTable(request);
+            selectTable(request, clientSocket);
             break;
         case RT_DELETE:
             /* To be implemented */
