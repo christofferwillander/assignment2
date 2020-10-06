@@ -36,6 +36,8 @@ char *logPath = NULL, *errPath = NULL;
 char databasePath[] = "../../database/";
 volatile sig_atomic_t runServer = 1;
 
+int countCommands(char *buffer, char* *commands);
+request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, int clientSocket);
 void terminate(char *str);
 void serve(int port);
 void freeChild();
@@ -122,7 +124,6 @@ int main(int argc, char* argv[]) {
 
 void serve(int port) {
     int serverSocket, clientSocket;
-    request_t *request;
     char *error;
     pid_t pid;
 
@@ -148,6 +149,12 @@ void serve(int port) {
 
     char *receiveBuffer = NULL;
     char *tempStr1 = NULL, *tempStr2 = NULL;
+
+    int nrOfCommands = 0;
+    char* *commands = NULL;
+
+    request_t *request = NULL;
+    request_t* *requests = NULL;
 
     char welcomeMessage[100] = "Welcome! Please provide your SQL query\n";
     
@@ -299,7 +306,6 @@ void serve(int port) {
                     }
                     else {
                         receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
-                        //printf("[*] Client %s:%i sent: %s (%ld byte(s))\n", clientIP, ntohs(clientAddress.sin_port), receiveBuffer, strlen(receiveBuffer));
                         tempStr1 = stringConcatenator("Client sent ", receiveBuffer, -1);
                         tempStr2 = stringConcatenator(tempStr1, " (", (strlen(receiveBuffer) + 1));
                         free(tempStr1);
@@ -312,10 +318,19 @@ void serve(int port) {
                         free(tempStr1);
                         free(tempStr2);
 
-                        request = parse_request(receiveBuffer, &error);
+                        nrOfCommands = countCommands(receiveBuffer, commands);
+
+                        if (nrOfCommands > 0 && nrOfCommands <= 1) {
+                            request = parse_request(receiveBuffer, &error);
+                        }
+                        else {
+                            tempStr1 = stringConcatenator(clientIP,":", ntohs(clientAddress.sin_port));
+                            requests = multipleRequests(receiveBuffer, tempStr1, nrOfCommands, clientSocket);
+                        }
+
                         memset(receiveBuffer, 0, BUFFERSZ);
 
-                        if (request != NULL && request->request_type == RT_QUIT) {
+                        if (request != NULL && request->request_type == RT_QUIT && nrOfCommands < 2) {
                             send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
 
                             tempStr1 = stringConcatenator("Disconnected client (client sent .quit command) - ", clientIP, -1);
@@ -342,7 +357,7 @@ void serve(int port) {
 
                             exit(EXIT_SUCCESS);
                         }
-                        else if (request == NULL) {
+                        else if (request == NULL && nrOfCommands < 2) {
                             tempStr1 = stringConcatenator("Invalid request received from client - ", clientIP, -1);
                             tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
                             serverLog(tempStr2, ERROR);
@@ -367,6 +382,15 @@ void serve(int port) {
                         else if (request != NULL) {
                             /* Send request to request handler to dispatch to proper function */
                             handleRequest(request, clientSocket);
+                            request = NULL;
+                        }
+                        else if (requests != NULL) {
+                            for (int i = 0; i < nrOfCommands; i++) {
+                                handleRequest(requests[i], clientSocket);
+                            }
+
+                            free (requests);
+                            requests = NULL;
                         }
                         
                     }
@@ -566,4 +590,76 @@ void terminate (char *str) {
     serverLog(fullError, ERROR);
     free(fullError);
     exit(EXIT_FAILURE);
+}
+
+int countCommands(char *buffer, char* *commands) {
+    char findStr[2] = ";";
+    int count = 0;
+    char *curPos = buffer;
+
+    if(buffer[0] == '.') {
+        count++;
+    }
+    else {
+        while (strstr(curPos, findStr) != NULL) {
+            curPos = strstr(curPos, findStr) + 1;
+            count++;
+        }
+    }
+
+    return count;
+}
+
+request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, int clientSocket) {
+    char *temp1 = NULL, *temp2 = NULL;
+    char *tempStr1 = NULL, *tempStr2 = NULL;
+    char *error = NULL;
+    int length = 0;
+    request_t* *requests = NULL;
+    requests = malloc(sizeof(request_t*) * nrOfCommands);
+
+    for (int i = 0; i < nrOfCommands; i++) {
+        temp1 = strstr(buffer, ";");
+        length = (int)(temp1 - buffer) + 2;
+
+        temp2 = malloc(length);
+
+        memcpy(temp2, buffer, length);
+
+        temp2[length - 1] = '\0';
+
+        buffer += (length - 1);
+        requests[i] = parse_request(temp2, &error);
+
+        if (error != NULL) {
+            tempStr1 = stringConcatenator("Invalid request received from client - ", clientAddr, -1);
+            serverLog(tempStr1, ERROR);
+            free(tempStr1);
+
+            tempStr1 = stringConcatenator("Parser returned error: ", error, -1);
+            serverLog(tempStr1, ERROR);
+            free(tempStr1);
+
+            /* If invalid request is not just an empty string, else... */
+            if (strcmp(error, "syntax error, unexpected $end") != 0) {
+                send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
+            }
+            else {
+                send(clientSocket, "Please provide a request\n", sizeof("Please provide a request\n"), 0);
+            }
+
+            /* Free character array for error message from parser */
+            free(error);
+
+            /* Breaking due to that an error occurred - no request will be executed */
+            requests = NULL;
+            break;
+        }
+
+        free(temp2);
+    }
+
+    free(clientAddr);
+
+    return requests;
 }
