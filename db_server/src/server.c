@@ -46,7 +46,8 @@ void daemonizeServer();
 void serverLog(char *msg, int type);
 void doWriteLock(int fd, int lock);
 void doReadLock(int fd, int lock);
-int checkLock(int fd);
+int checkReadLock(int fd);
+int checkWriteLock(int fd);
 char *stringConcatenator(char* str1, char* str2, int num);
 
 int main(int argc, char* argv[]) {
@@ -678,16 +679,28 @@ void doWriteLock(int fd, int lock) {
         fileLock.l_start = 0;
         fileLock.l_whence = SEEK_SET;
         fileLock.l_len = 0;
-
-        fcntl(fd, F_SETLKW, &fileLock);
+        fileLock.l_pid = getpid();
+        
+        if(fcntl(fd, F_SETLKW, &fileLock) == -1) {
+            printf("Could not acquire write lock for %d\n", fd);
+        }
+        else {
+            printf("Write lock for %d acquired\n", fd);
+        }
     }
     else {
         fileLock.l_type = F_ULOCK;
         fileLock.l_type = 0;
         fileLock.l_whence = SEEK_SET;
         fileLock.l_len = 0;
+        fileLock.l_pid = getpid();
 
-        fcntl(fd, F_SETLK, &fileLock);
+        if (fcntl(fd, F_SETLK, &fileLock) == -1) {
+            printf("Could not release write lock for %d\n", fd);
+        }
+        else {
+            printf("Write lock for %d released\n", fd);
+        }
     }
 }
 
@@ -699,20 +712,32 @@ void doReadLock(int fd, int lock) {
         fileLock.l_start = 0;
         fileLock.l_whence = SEEK_SET;
         fileLock.l_len = 0;
+        fileLock.l_pid = getpid();
         
-        fcntl(fd, F_SETLKW, &fileLock);
+        if(fcntl(fd, F_SETLKW, &fileLock) == -1) {
+            printf("Could not acquire read lock for %d\n", fd);
+        }
+        else {
+            printf("Read lock for %d acquired\n", fd);
+        }
     }
     else {
         fileLock.l_type = F_ULOCK;
         fileLock.l_type = 0;
         fileLock.l_whence = SEEK_SET;
         fileLock.l_len = 0;
+        fileLock.l_pid = getpid();
 
-        fcntl(fd, F_SETLK, &fileLock);
+        if (fcntl(fd, F_SETLK, &fileLock) == -1) {
+            printf("Could not release read lock for %d\n", fd);
+        }
+        else {
+            printf("Read lock for %d released\n", fd);
+        }
     }
 }
 
-int checkLock(int fd) {
+int checkReadLock(int fd) {
     int isLocked = 0;
     struct flock fileLock;
 
@@ -725,6 +750,26 @@ int checkLock(int fd) {
 
     if (fileLock.l_type != F_UNLCK) {
         isLocked = 1;
+        printf("File %d is locked for reading\n", fd);
+    }
+
+    return isLocked;
+}
+
+int checkWriteLock(int fd) {
+    int isLocked = 0;
+    struct flock fileLock;
+
+    fileLock.l_type = F_WRLCK;
+    fileLock.l_start = 0;
+    fileLock.l_whence = SEEK_SET;
+    fileLock.l_len = 0;
+        
+    fcntl(fd, F_GETLK, &fileLock);
+
+    if (fileLock.l_type != F_UNLCK) {
+        isLocked = 1;
+        printf("File %d is locked for writing\n", fd);
     }
 
     return isLocked;
