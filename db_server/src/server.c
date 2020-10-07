@@ -183,6 +183,7 @@ void serve(int port) {
     if ((serverSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         terminate("Error occurred when creating server socket: ");
     }
+
     serverLog("Socket was successfully created", SUCCESS);
 
     nanosleep(&sleepTime1, NULL);

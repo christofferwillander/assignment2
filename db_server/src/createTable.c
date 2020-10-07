@@ -7,10 +7,8 @@
 extern char databasePath[];
 extern void doWriteLock(int fd, int lock);
 
-void writeToFile(char *filePath, char *name, char *dataT, int size, int check)
+void writeToFile(FILE *ptr, char *name, char *dataT, int size, int check)
 {
-    FILE *ptr = fopen(filePath, "w");
-    doWriteLock(fileno(ptr), 1);
     char charSize[10];
 
     fputs(name, ptr);
@@ -27,9 +25,6 @@ void writeToFile(char *filePath, char *name, char *dataT, int size, int check)
     {
         fputs("\n",ptr);
     }
-
-    doWriteLock(fileno(ptr), 0);
-    fclose(ptr);
 }
 
 void createTable(request_t *req, int clientSocket)
@@ -51,9 +46,8 @@ void createTable(request_t *req, int clientSocket)
     }
     else 
     {
-        FILE *file = fopen(filePath, "w");
-        fclose(file);
-
+        FILE *file = fopen(filePath, "w+");
+        doWriteLock(fileno(file), 1);
         column_t *end;
         column_t *temp = req->columns;
 
@@ -76,12 +70,14 @@ void createTable(request_t *req, int clientSocket)
                 dataType="INT";
             }
 
-            writeToFile(filePath, cName, dataType, size, check);
+            writeToFile(file, cName, dataType, size, check);
 
             end=temp->next;
             temp = end;   
 
         }
+        doWriteLock(fileno(file), 0);
+        fclose(file);
         send(clientSocket, "Table was succesfully created\n", sizeof("Table was succesfully created\n"), 0);
     }
     free(filePath);
