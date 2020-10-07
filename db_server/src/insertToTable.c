@@ -5,6 +5,7 @@
 
 #include "request.h"
 extern char databasePath[];
+extern void doWriteLock(int fd, int lock);
 
 void insertToFile(char *filename, FILE *ptr, char *value, int check);
 int numberOfColumns(FILE *ptr, char *filename);
@@ -113,6 +114,7 @@ void insertToFile(char *filename, FILE *ptr, char *value, int check)
 {
 
     ptr = fopen(filename, "a");
+    doWriteLock(fileno(ptr), 1);
     if(check != 1)
     {
         //fputs(value,ptr);
@@ -126,6 +128,7 @@ void insertToFile(char *filename, FILE *ptr, char *value, int check)
         fprintf(ptr, "%s\n", value);
     }
     
+    doWriteLock(fileno(ptr), 0);
     fclose(ptr);
 }
 

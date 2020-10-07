@@ -46,6 +46,7 @@ void daemonizeServer();
 void serverLog(char *msg, int type);
 void doWriteLock(int fd, int lock);
 void doReadLock(int fd, int lock);
+int checkLock(int fd);
 char *stringConcatenator(char* str1, char* str2, int num);
 
 int main(int argc, char* argv[]) {
@@ -322,10 +323,10 @@ void serve(int port) {
 
                         nrOfCommands = countCommands(receiveBuffer, commands);
 
-                        if (nrOfCommands > 0 && nrOfCommands <= 1) {
+                        if (nrOfCommands >= 0 && nrOfCommands <= 1) {
                             request = parse_request(receiveBuffer, &error);
                         }
-                        else {
+                        else if (nrOfCommands > 1) {
                             tempStr1 = stringConcatenator(clientIP,":", ntohs(clientAddress.sin_port));
                             requests = multipleRequests(receiveBuffer, tempStr1, nrOfCommands, clientSocket);
                         }
@@ -602,6 +603,9 @@ int countCommands(char *buffer, char* *commands) {
     if(buffer[0] == '.') {
         count++;
     }
+    else if (strcmp(buffer, "\n") == 0) {
+        printf("hej\n");
+    }
     else {
         while (strstr(curPos, findStr) != NULL) {
             curPos = strstr(curPos, findStr) + 1;
@@ -706,4 +710,22 @@ void doReadLock(int fd, int lock) {
 
         fcntl(fd, F_SETLK, &fileLock);
     }
+}
+
+int checkLock(int fd) {
+    int isLocked = 0;
+    struct flock fileLock;
+
+    fileLock.l_type = F_RDLCK;
+    fileLock.l_start = 0;
+    fileLock.l_whence = SEEK_SET;
+    fileLock.l_len = 0;
+        
+    fcntl(fd, F_GETLK, &fileLock);
+
+    if (fileLock.l_type != F_UNLCK) {
+        isLocked = 1;
+    }
+
+    return isLocked;
 }

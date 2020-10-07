@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "request.h"
 extern char databasePath[];
+extern int checkLock(int fd);
 
 void selectTable(request_t *req, int clientSocket)
 {
@@ -24,6 +25,10 @@ void selectTable(request_t *req, int clientSocket)
         ptr = fopen(filePath, "r");
         char getString[256];
         
+        while (checkLock(fileno(ptr))) {
+            usleep(100000);
+        }
+
         //skip the first line
         char lineTemp[100];
         fgets(lineTemp, 100, ptr);
