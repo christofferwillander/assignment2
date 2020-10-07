@@ -5,10 +5,13 @@
 #include "../include/request.h"
 
 extern char databasePath[];
-void writeToFile(char *filename, FILE *ptr, char *name, char *dataT, int size, int check)
+extern void doWriteLock(int fd, int lock);
+
+void writeToFile(char *filePath, char *name, char *dataT, int size, int check)
 {
+    FILE *ptr = fopen(filePath, "w");
+    doWriteLock(fileno(ptr), 1);
     char charSize[10];
-    ptr = fopen(filename, "a");
 
     fputs(name, ptr);
     fputs(":", ptr);
@@ -24,6 +27,8 @@ void writeToFile(char *filename, FILE *ptr, char *name, char *dataT, int size, i
     {
         fputs("\n",ptr);
     }
+
+    doWriteLock(fileno(ptr), 0);
     fclose(ptr);
 }
 
@@ -46,7 +51,8 @@ void createTable(request_t *req, int clientSocket)
     }
     else 
     {
-        FILE *file;
+        FILE *file = fopen(filePath, "w");
+        fclose(file);
 
         column_t *end;
         column_t *temp = req->columns;
@@ -57,24 +63,20 @@ void createTable(request_t *req, int clientSocket)
             {
                 check = 1;
             }
-            printf("name : %s\n",temp->name);
             cName=temp->name;
             if(temp->data_type != 0)
             {
-                //printf("data type : %d\n",temp->data_type);
                 dataType="VARCHAR";
-                //printf("char size : %d\n",temp->char_size);
                 size=temp->char_size;
 
             }
             else
             {
-                //printf("char value is an INT, no size\n");
                 size = 0;
                 dataType="INT";
             }
 
-            writeToFile(filePath, file, cName, dataType, size, check);
+            writeToFile(filePath, cName, dataType, size, check);
 
             end=temp->next;
             temp = end;   
