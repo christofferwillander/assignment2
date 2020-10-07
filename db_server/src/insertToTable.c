@@ -13,12 +13,15 @@ int checkBuffersize(request_t *req, char *filename);
 int numberOfColumns(FILE *ptr, char *filename)
 {
 
-    int count = 0;
+    int count = 0, len = 0;
     char lineTemp[200];
     ptr = fopen(filename, "r");
+    char *temp1 = NULL, *temp2 = NULL, *temp3 = NULL;
+    
+
     fgets(lineTemp, 200, ptr);
     //printf("line %s", lineTemp);
-
+ 
     const char *del = ":";
     char *templine = strtok(lineTemp, del);
     
@@ -34,6 +37,7 @@ int numberOfColumns(FILE *ptr, char *filename)
     }
     //printf("count %d",count);
     fclose(ptr);
+
     return count;
 
 }
@@ -46,47 +50,48 @@ int checkBuffersize(request_t *req, char *filename)
     FILE *ptr = fopen(filename, "r");
     FILE *filetemp;
     char *temp1 = NULL, *temp2 = NULL, *temp3 = NULL;
-    temp1 = malloc(100);
     int len = 0;
     int dig = 0;
     int columns = numberOfColumns(filetemp, filename);
-    int *sizearr = malloc(sizeof(request_t) * columns);
+    int *sizeArr = malloc(columns);
     int sizecounter = 0;
-    int *sizearrCmd = malloc(sizeof(request_t) * columns);
-    int sizecounterCmd = 0;
+    int *sizeArrFromFile = malloc(columns);
+    int sizeFromFileCounter = 0;
     int retval = 1;
 
+    //find all the sizes in order in the request
     while (temp != NULL)
     {   
         if(temp->data_type == DT_VARCHAR)
         {
-            sizearr[sizecounter++] = strlen(temp->char_val);
+            sizeArr[sizecounter++] = strlen(temp->char_val);
         }
 
         end=temp->next;
         temp = end;    
     }
 
+    temp1 = malloc(100);
     fgets(temp1, 100, ptr);
     temp3 = strstr(temp1, "\n");
     len = (int)(temp3 - temp1) + 1;
     temp2 = malloc(len);
     memcpy(temp2, temp1, len);
-
+    //Find all the max sizes from the table file
     for(int i = 0; i < strlen(temp2); i++)
     {
         if( isdigit(temp2[i]) != 0)
         {
             //printf("dig -> %c\n", temp2[i]);
-            sizearrCmd[sizecounterCmd++] = (temp2[i] - '0') + 2; // +2 compensate for the '' signs
+            sizeArrFromFile[sizeFromFileCounter++] = (temp2[i] - '0') + 2; // +2 compensate for the '' signs
         }
     }
 
-
-    for(int i = 0; i < sizecounterCmd; i++)
+    //compare the sizes found, if the incomming size exceeds the max size it will not add anything to the table
+    for(int i = 0; i < sizeFromFileCounter; i++)
     {
-        //printf("cmd-> %d\t vs\t org -> %d\n", sizearrCmd[i], sizearr[i]);
-        if(sizearrCmd[i] < sizearr[i])
+        //printf("cmd-> %d\t vs\t org -> %d\n", sizeArrFromFile[i], sizeArr[i]);
+        if(sizeArrFromFile[i] < sizeArr[i])
         {
             retval = 0;
         }
@@ -95,8 +100,8 @@ int checkBuffersize(request_t *req, char *filename)
 
     //printf("string2 %s\n", temp2);
 
-    free(sizearr);
-    free(sizearrCmd);
+    free(sizeArr);
+    free(sizeArrFromFile);
     free(temp1);
     free(temp2);
     fclose(ptr);
