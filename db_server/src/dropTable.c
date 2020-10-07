@@ -6,12 +6,17 @@
 #include "../include/request.h"
 
 extern char databasePath[];
+extern void doWriteLock(int fd, int lock);
 
 void drop(request_t *req, int clientSocket)
 {
     char *filePath = malloc(strlen(databasePath) + strlen(req->table_name) + 1);
     strcpy(filePath, databasePath);
     strcat(filePath,req->table_name);
+
+    FILE *file = fopen(filePath, "w");
+    doWriteLock(fileno(file), 1);
+
 
     if(access(filePath, F_OK) == -1)
     {
@@ -29,5 +34,7 @@ void drop(request_t *req, int clientSocket)
             send(clientSocket, "The table could not be removed\n", strlen("The table could not be removed\n"), 0 );
         }
     }
+    
+    fclose(file);
     free(filePath);
 }

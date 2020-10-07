@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "request.h"
+#include "../include/request.h"
 extern char databasePath[];
-extern int checkLock(int fd);
+extern void doReadLock(int fd, int lock);
 
 void selectTable(request_t *req, int clientSocket)
 {
@@ -18,16 +18,14 @@ void selectTable(request_t *req, int clientSocket)
     }
     else
     {
-        FILE *ptr;
+        FILE *ptr = fopen(filePath, "r");
         FILE *columns;
-        int colNr = numberOfColumns(columns, filePath);
+        int colNr = numberOfColumns(ptr);
         int checkCol = 0;
-        ptr = fopen(filePath, "r");
+        fseek(ptr, 0, SEEK_SET);
         char getString[256];
         
-        while (checkLock(fileno(ptr))) {
-            usleep(100000);
-        }
+        doReadLock(fileno(ptr), 1);
 
         //skip the first line
         char lineTemp[100];
@@ -57,7 +55,9 @@ void selectTable(request_t *req, int clientSocket)
             }
         }
         send(clientSocket, "\n", strlen("\n"), 0);
+        doReadLock(fileno(ptr), 0);
         fclose(ptr);
     }
+
     free(filePath);
 }

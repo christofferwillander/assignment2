@@ -46,8 +46,6 @@ void daemonizeServer();
 void serverLog(char *msg, int type);
 void doWriteLock(int fd, int lock);
 void doReadLock(int fd, int lock);
-int checkReadLock(int fd);
-int checkWriteLock(int fd);
 char *stringConcatenator(char* str1, char* str2, int num);
 
 int main(int argc, char* argv[]) {
@@ -735,42 +733,4 @@ void doReadLock(int fd, int lock) {
             printf("Read lock for %d released\n", fd);
         }
     }
-}
-
-int checkReadLock(int fd) {
-    int isLocked = 0;
-    struct flock fileLock;
-
-    fileLock.l_type = F_RDLCK;
-    fileLock.l_start = 0;
-    fileLock.l_whence = SEEK_SET;
-    fileLock.l_len = 0;
-        
-    fcntl(fd, F_GETLK, &fileLock);
-
-    if (fileLock.l_type != F_UNLCK) {
-        isLocked = 1;
-        printf("File %d is locked for reading\n", fd);
-    }
-
-    return isLocked;
-}
-
-int checkWriteLock(int fd) {
-    int isLocked = 0;
-    struct flock fileLock;
-
-    fileLock.l_type = F_WRLCK;
-    fileLock.l_start = 0;
-    fileLock.l_whence = SEEK_SET;
-    fileLock.l_len = 0;
-        
-    fcntl(fd, F_GETLK, &fileLock);
-
-    if (fileLock.l_type != F_UNLCK) {
-        isLocked = 1;
-        printf("File %d is locked for writing\n", fd);
-    }
-
-    return isLocked;
 }
