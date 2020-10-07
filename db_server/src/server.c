@@ -44,6 +44,8 @@ void freeChild();
 void gracefulShutdown(int signum);
 void daemonizeServer();
 void serverLog(char *msg, int type);
+void doWriteLock(int fd, int lock);
+void doReadLock(int fd, int lock);
 char *stringConcatenator(char* str1, char* str2, int num);
 
 int main(int argc, char* argv[]) {
@@ -662,4 +664,46 @@ request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, i
     free(clientAddr);
 
     return requests;
+}
+
+void doWriteLock(int fd, int lock) {
+    struct flock fileLock;
+
+    if (lock) {
+        fileLock.l_type = F_WRLCK;
+        fileLock.l_start = 0;
+        fileLock.l_whence = SEEK_SET;
+        fileLock.l_len = 0;
+
+        fcntl(fd, F_SETLKW, &fileLock);
+    }
+    else {
+        fileLock.l_type = F_ULOCK;
+        fileLock.l_type = 0;
+        fileLock.l_whence = SEEK_SET;
+        fileLock.l_len = 0;
+
+        fcntl(fd, F_SETLK, &fileLock);
+    }
+}
+
+void doReadLock(int fd, int lock) {
+    struct flock fileLock;
+
+    if (lock) {
+        fileLock.l_type = F_RDLCK;
+        fileLock.l_start = 0;
+        fileLock.l_whence = SEEK_SET;
+        fileLock.l_len = 0;
+        
+        fcntl(fd, F_SETLKW, &fileLock);
+    }
+    else {
+        fileLock.l_type = F_ULOCK;
+        fileLock.l_type = 0;
+        fileLock.l_whence = SEEK_SET;
+        fileLock.l_len = 0;
+
+        fcntl(fd, F_SETLK, &fileLock);
+    }
 }
