@@ -35,13 +35,21 @@
 char *logPath = NULL, *errPath = NULL;
 char databasePath[] = "../../database/";
 volatile sig_atomic_t runServer = 1;
+volatile sig_atomic_t runChildren = 1;
+
+int *childArray = NULL;
+int childCtr = 0;
 
 int countCommands(char *buffer, char* *commands);
 request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, int clientSocket);
 void terminate(char *str);
 void serve(int port);
+void addChild(pid_t pid);
+void removeChild(pid_t pid);
 void freeChild();
+void killChild();
 void gracefulShutdown(int signum);
+void terminateChildren();
 void daemonizeServer();
 void serverLog(char *msg, int type);
 void doWriteLock(int fd, int lock);
@@ -137,6 +145,10 @@ void serve(int port) {
     sleepTime2.tv_sec = 1;
     sleepTime2.tv_nsec = 0;
 
+    sigset_t new_mask, orig_mask;
+    sigemptyset(&new_mask);
+    sigaddset(&new_mask, SIGUSR1);
+
     /* Signal for graceful shutdown of server instance */
     struct sigaction shutdownServer;
     shutdownServer.sa_handler = gracefulShutdown;
@@ -148,6 +160,12 @@ void serve(int port) {
     ignoreChild.sa_handler = freeChild;
     sigemptyset(&ignoreChild.sa_mask);
     ignoreChild.sa_flags = SA_RESTART;
+
+    /* Signal for handling shutdown signal (SIGUSR1) in child processes */
+    struct sigaction terminateChild;
+    terminateChild.sa_handler = killChild;
+    sigemptyset(&terminateChild.sa_mask);
+    terminateChild.sa_flags = 0;
 
     char *receiveBuffer = NULL;
     char *tempStr1 = NULL, *tempStr2 = NULL;
@@ -246,6 +264,7 @@ void serve(int port) {
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
+                setpgid(0, 0);
                 tempStr1 = stringConcatenator("Child process was spawned (pid: ", "", getpid());
                 tempStr2 = stringConcatenator(tempStr1, ")", -1);
                 serverLog(tempStr2, SUCCESS);
@@ -266,140 +285,149 @@ void serve(int port) {
 
                 /* Infinite loop to continuously receive data from client */
                 while(1) {
+                    sigaction(SIGUSR1, &terminateChild, NULL);
+
                     /* Zeroing out receiving buffer */
                     memset(receiveBuffer, 0, BUFFERSZ);
 
-                    /* Receiving data (SQL request) from client, placing in buffer */
-                    if(recv(clientSocket, receiveBuffer, (BUFFERSZ - 1), 0) == -1){
-                        if(runServer) {
-                            terminate("Error occurred when receiving data from client: ");
-                        }
-                        else {
-                            send(clientSocket, "Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
-                            shutdown(clientSocket, SHUT_RDWR);
-                            close(clientSocket);
-
-                            /* Free receive buffer memory */
-                            tempStr1 = stringConcatenator("Freeing receiver buffer memory (pid: ", "", getpid());
-                            tempStr2 = stringConcatenator(tempStr1, ")", -1);
-                            serverLog(tempStr2, INFO);
+                    if(runChildren) {
+                        /* Receiving data (SQL request) from client, placing in buffer */
+                        if(recv(clientSocket, receiveBuffer, (BUFFERSZ - 1), 0) == -1){
+                            if (errno != EINTR) {
+                                terminate("Error occurred when receiving data from client: ");
+                            } 
+                        } /* If client closes terminal session */
+                        else if (strlen(receiveBuffer) == 0){
+                            tempStr1 = stringConcatenator("Disconnected client (client closed terminal session) - ", clientIP, -1);
+                            tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+                            serverLog(tempStr2, 2);
                             free(tempStr1);
                             free(tempStr2);
                             
-                            free(receiveBuffer);
-                            exit(EXIT_SUCCESS);
-                        }
-                        
-                    } /* If client closes terminal session */
-                    else if (strlen(receiveBuffer) == 0){
-                        tempStr1 = stringConcatenator("Disconnected client (client closed terminal session) - ", clientIP, -1);
-                        tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
-                        serverLog(tempStr2, 2);
-                        free(tempStr1);
-                        free(tempStr2);
-                        
-                        /* Close client socket */
-                        shutdown(clientSocket, SHUT_RDWR);
-                        close(clientSocket);
-
-                        /* Free receive buffer memory */
-                        free(receiveBuffer);
-
-                        exit(EXIT_SUCCESS);
-                    }
-                    else {
-                        receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
-                        tempStr1 = stringConcatenator("Client sent ", receiveBuffer, -1);
-                        tempStr2 = stringConcatenator(tempStr1, " (", (strlen(receiveBuffer) + 1));
-                        free(tempStr1);
-                        tempStr1 = stringConcatenator(tempStr2, " bytes) - ", -1);
-                        free(tempStr2);
-                        tempStr2 = stringConcatenator(tempStr1, clientIP, -1);
-                        free(tempStr1);
-                        tempStr1 = stringConcatenator(tempStr2, ":", ntohs(clientAddress.sin_port));
-                        serverLog(tempStr1, INFO);
-                        free(tempStr1);
-                        free(tempStr2);
-
-                        nrOfCommands = countCommands(receiveBuffer, commands);
-
-                        if (nrOfCommands >= 0 && nrOfCommands <= 1) {
-                            request = parse_request(receiveBuffer, &error);
-                        }
-                        else if (nrOfCommands > 1) {
-                            tempStr1 = stringConcatenator(clientIP,":", ntohs(clientAddress.sin_port));
-                            requests = multipleRequests(receiveBuffer, tempStr1, nrOfCommands, clientSocket);
-                        }
-
-                        memset(receiveBuffer, 0, BUFFERSZ);
-
-                        if (request != NULL && request->request_type == RT_QUIT && nrOfCommands < 2) {
-                            send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
-
-                            tempStr1 = stringConcatenator("Disconnected client (client sent .quit command) - ", clientIP, -1);
-                            tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
-                            serverLog(tempStr2, INFO);
-                            free(tempStr1);
-                            free(tempStr2);
-
                             /* Close client socket */
                             shutdown(clientSocket, SHUT_RDWR);
                             close(clientSocket);
 
                             /* Free receive buffer memory */
-                            tempStr1 = stringConcatenator("Freeing receiver buffer memory (pid: ", "", getpid());
-                            tempStr2 = stringConcatenator(tempStr1, ")", -1);
-                            serverLog(tempStr2, INFO);
-                            free(tempStr1);
-                            free(tempStr2);
-                            
                             free(receiveBuffer);
-
-                            /* Destroy request containing .quit command */
-                            destroy_request(request);
 
                             exit(EXIT_SUCCESS);
                         }
-                        else if (request == NULL && nrOfCommands < 2) {
-                            tempStr1 = stringConcatenator("Invalid request received from client - ", clientIP, -1);
-                            tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
-                            serverLog(tempStr2, ERROR);
+                        else {
+                            receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
+                            tempStr1 = stringConcatenator("Client sent ", receiveBuffer, -1);
+                            tempStr2 = stringConcatenator(tempStr1, " (", (strlen(receiveBuffer) + 1));
+                            free(tempStr1);
+                            tempStr1 = stringConcatenator(tempStr2, " bytes) - ", -1);
+                            free(tempStr2);
+                            tempStr2 = stringConcatenator(tempStr1, clientIP, -1);
+                            free(tempStr1);
+                            tempStr1 = stringConcatenator(tempStr2, ":", ntohs(clientAddress.sin_port));
+                            serverLog(tempStr1, INFO);
                             free(tempStr1);
                             free(tempStr2);
 
-                            tempStr1 = stringConcatenator("Parser returned error: ", error, -1);
-                            serverLog(tempStr1, ERROR);
-                            free(tempStr1);
+                            nrOfCommands = countCommands(receiveBuffer, commands);
 
-                            /* If invalid request is not just an empty string, else... */
-                            if (strcmp(error, "syntax error, unexpected $end") != 0) {
-                                send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
+                            if (nrOfCommands >= 0 && nrOfCommands <= 1) {
+                                request = parse_request(receiveBuffer, &error);
                             }
-                            else {
-                                send(clientSocket, "Please provide a request\n", sizeof("Please provide a request\n"), 0);
-                            }   
-
-                            /* Free character array for error message from parser */
-                            free(error);
-                        }
-                        else if (request != NULL) {
-                            /* Send request to request handler to dispatch to proper function */
-                            handleRequest(request, clientSocket);
-                            request = NULL;
-                        }
-                        else if (requests != NULL) {
-                            for (int i = 0; i < nrOfCommands; i++) {
-                                handleRequest(requests[i], clientSocket);
+                            else if (nrOfCommands > 1) {
+                                tempStr1 = stringConcatenator(clientIP,":", ntohs(clientAddress.sin_port));
+                                requests = multipleRequests(receiveBuffer, tempStr1, nrOfCommands, clientSocket);
                             }
 
-                            free (requests);
-                            requests = NULL;
+                            memset(receiveBuffer, 0, BUFFERSZ);
+
+                            if (request != NULL && request->request_type == RT_QUIT && nrOfCommands < 2) {
+                                send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+
+                                tempStr1 = stringConcatenator("Disconnected client (client sent .quit command) - ", clientIP, -1);
+                                tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+                                serverLog(tempStr2, INFO);
+                                free(tempStr1);
+                                free(tempStr2);
+
+                                /* Close client socket */
+                                shutdown(clientSocket, SHUT_RDWR);
+                                close(clientSocket);
+
+                                /* Free receive buffer memory */
+                                tempStr1 = stringConcatenator("Freeing receiver buffer memory (pid: ", "", getpid());
+                                tempStr2 = stringConcatenator(tempStr1, ")", -1);
+                                serverLog(tempStr2, INFO);
+                                free(tempStr1);
+                                free(tempStr2);
+                                
+                                free(receiveBuffer);
+
+                                /* Destroy request containing .quit command */
+                                destroy_request(request);
+
+                                exit(EXIT_SUCCESS);
+                            }
+                            else if (request == NULL && nrOfCommands < 2) {
+                                tempStr1 = stringConcatenator("Invalid request received from client - ", clientIP, -1);
+                                tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
+                                serverLog(tempStr2, ERROR);
+                                free(tempStr1);
+                                free(tempStr2);
+
+                                tempStr1 = stringConcatenator("Parser returned error: ", error, -1);
+                                serverLog(tempStr1, ERROR);
+                                free(tempStr1);
+
+                                /* If invalid request is not just an empty string, else... */
+                                if (strcmp(error, "syntax error, unexpected $end") != 0) {
+                                    send(clientSocket, "ERROR: Invalid request sent\n", sizeof("ERROR: Invalid request sent\n"), 0);
+                                }
+                                else {
+                                    send(clientSocket, "Please provide a request\n", sizeof("Please provide a request\n"), 0);
+                                }   
+
+                                /* Free character array for error message from parser */
+                                free(error);
+                            }
+                            else if (request != NULL) {
+                                /* Send request to request handler to dispatch to proper function */
+                                sigprocmask(SIG_BLOCK, &new_mask, &orig_mask);
+                                handleRequest(request, clientSocket);
+                                request = NULL;
+                                sigprocmask(SIG_SETMASK, &orig_mask, NULL);
+                            }
+                            else if (requests != NULL) {
+                                sigprocmask(SIG_BLOCK, &new_mask, &orig_mask);
+                                for (int i = 0; i < nrOfCommands; i++) {
+                                    handleRequest(requests[i], clientSocket);
+                                }
+                                free (requests);
+                                requests = NULL;
+                                sigprocmask(SIG_SETMASK, &orig_mask, NULL);
+                            }
+                            
                         }
+                    }
+                    else {
+                        send(clientSocket, "Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+                        shutdown(clientSocket, SHUT_RDWR);
+                        close(clientSocket);
+
+                        /* Free receive buffer memory */
+                        tempStr1 = stringConcatenator("Freeing receiver buffer memory (pid: ", "", getpid());
+                        tempStr2 = stringConcatenator(tempStr1, ")", -1);
+                        serverLog(tempStr2, INFO);
+                        free(tempStr1);
+                        free(tempStr2);
                         
+                        free(receiveBuffer);
+                        exit(EXIT_SUCCESS);
                     }
                 }
             }
             else {
+                /* Add child to list */
+                addChild(pid);
+
                 /* Parent closes client socket and continues to accept method to accept new connections */
                 close(clientSocket); 
                 
@@ -410,6 +438,7 @@ void serve(int port) {
     }
     write(STDOUT_FILENO, "\n", 2);
     serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
+    terminateChildren();
     nanosleep(&sleepTime2, NULL);
 
     /* Shutting down server socket */
@@ -445,13 +474,10 @@ void freeChild() {
     char *tempStr1, *tempStr2;
 
     if((pid = waitpid(-1, NULL, WNOHANG)) == -1){
-        tempStr1 = stringConcatenator("Problem occurred when terminating child (pid: ", "", pid);
-        tempStr2 = stringConcatenator(tempStr1, ")", -1);
-        serverLog(tempStr2, 0);
-        free(tempStr1);
-        free(tempStr2);
+        serverLog("Problem occurred when terminating child", ERROR);
     }
     else{
+        removeChild(pid);
         tempStr1 = stringConcatenator("Child was succesfully terminated (pid: ", "", pid);
         tempStr2 = stringConcatenator(tempStr1, ")", -1);
         serverLog(tempStr2, 0);
@@ -788,4 +814,70 @@ void doReadLock(int fd, int lock) {
             free(tempStr2);
         }
     }
+}
+
+void addChild(pid_t pid) {
+    char *tempStr1 = NULL, *tempStr2 = NULL;
+
+    if (childArray == NULL) {
+        childArray = malloc(sizeof(int)*10);
+    }
+
+    if (childCtr % 10 == 0) {
+        childArray = realloc(childArray, (sizeof(int) * (childCtr + 10)));
+    }
+
+    childArray[childCtr++] = pid;
+
+    tempStr1 = stringConcatenator("Added child with pid: ", "", pid);
+    tempStr2 = stringConcatenator(tempStr1, " to array", -1);
+    serverLog(tempStr2, INFO);
+    free(tempStr1);
+    free(tempStr2);
+}
+
+void removeChild(pid_t pid){
+    char *tempStr1 = NULL, *tempStr2 = NULL;
+    if (childArray != NULL) {
+        int foundPos = -1;
+        for (int i = 0; (i < childCtr) && foundPos == -1; i++) {
+            if (childArray[i] == pid) {
+                foundPos = i;
+            }
+        }
+
+        if (foundPos != -1) {
+            childArray[foundPos] = childArray[(childCtr - 1)];
+            childArray[(childCtr - 1)] = -1;
+            childCtr--;
+
+            tempStr1 = stringConcatenator("Removed child with pid: ", "", pid);
+            tempStr2 = stringConcatenator(tempStr1, " from array", -1);
+            serverLog(tempStr2, INFO);
+            free(tempStr1);
+            free(tempStr2);
+        }
+    }
+}
+
+void terminateChildren() {
+    int currentChild = 0;
+    for (int i = 0; i < childCtr; i++) {
+        currentChild = childArray[i];
+        kill(childArray[i], SIGUSR1);
+    }
+
+    while(childCtr != 0) {
+    }
+
+    if (childCtr == 0) {
+        free(childArray);
+        childArray = NULL;
+    }
+}
+
+void killChild() {
+    int curErr = errno;
+    runChildren = 0;
+    errno = curErr;
 }
