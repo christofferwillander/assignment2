@@ -408,7 +408,7 @@ void serve(int port) {
             }
         }
     }
-    printf("\n");
+    write(STDOUT_FILENO, "\n", 2);
     serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
     nanosleep(&sleepTime2, NULL);
 
@@ -440,6 +440,7 @@ void serve(int port) {
 }
 
 void freeChild() {
+    int curErr = errno;
     pid_t pid;
     char *tempStr1, *tempStr2;
 
@@ -457,10 +458,14 @@ void freeChild() {
         free(tempStr1);
         free(tempStr2);
     }
+
+    errno = curErr;
 }
 
 void gracefulShutdown(int signum) {
+    int curErr = errno;
     runServer = 0;
+    errno = curErr;
 }
 
 void daemonizeServer() {
@@ -537,19 +542,35 @@ void serverLog(char *msg, int type) {
     time_t rawTime = time(NULL);
     struct tm *hrTime = localtime(&rawTime);
     char currentTime[25];
+    char *buf = NULL;
     strftime(currentTime, 25, "%Y-%m-%d %H:%M:%S", hrTime);
 
     if (type == 0) {
         syslog(LOG_NOTICE, "%s", msg);
-        printf("%s [+] %s\n", currentTime, msg);
+
+        buf = malloc(strlen(currentTime) + strlen(" [+] ") + strlen(msg) + strlen("\n") + 1);
+        sprintf(buf, "%s [+] %s\n", currentTime, msg);
+        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+        free(buf);
+        buf = NULL;
     }
     else if (type == 1) {
         syslog(LOG_ERR, "%s", msg);
-        printf("%s [-] %s\n", currentTime, msg);
+        
+        buf = malloc(strlen(currentTime) + strlen(" [-] ") + strlen(msg) + strlen("\n") + 1);
+        sprintf(buf, "%s [-] %s\n", currentTime, msg);
+        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+        free(buf);
+        buf = NULL;
     }
     else if (type == 2) {
         syslog(LOG_INFO, "%s\n", msg);
-        printf("%s [*] %s\n", currentTime, msg);
+        
+        buf = malloc(strlen(currentTime) + strlen(" [*] ") + strlen(msg) + strlen("\n") + 1);
+        sprintf(buf, "%s [*] %s\n", currentTime, msg);
+        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+        free(buf);
+        buf = NULL;
     }
 
     if (logPath != NULL && errPath != NULL) {
@@ -604,7 +625,6 @@ int countCommands(char *buffer, char* *commands) {
         count++;
     }
     else if (strcmp(buffer, "\n") == 0) {
-        printf("hej\n");
     }
     else {
         while (strstr(curPos, findStr) != NULL) {
