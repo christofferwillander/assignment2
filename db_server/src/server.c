@@ -122,8 +122,28 @@ int main(int argc, char* argv[]) {
     }
 
     if (daemonize > 0) {
-        printf("[+] Daemonizing server on port: %d  \n", port);
-        daemonizeServer();
+        struct sockaddr_in serverAddress;
+        memset(&serverAddress, 0, sizeof(serverAddress));
+        serverAddress.sin_family = AF_INET;
+        serverAddress.sin_port = htons(port);
+        serverAddress.sin_addr.s_addr = INADDR_ANY;
+        int serverSocket;
+
+        if ((serverSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+            perror("Error occurred when creating server socket");
+            exit(EXIT_FAILURE);
+        }
+
+        /* Checking if port is available before daemonizing server */
+        if(bind(serverSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress)) == -1) {
+            perror("Error occurred when binding server socket");
+            exit(EXIT_FAILURE);
+        }
+        else {
+            close(serverSocket);
+            printf("[+] Daemonizing server on port: %d  \n", port);
+            daemonizeServer();
+        }
     }
     else {
         openlog("SQL Server", LOG_PID | LOG_NDELAY, LOG_USER);
@@ -242,8 +262,8 @@ void serve(int port) {
     char clientIP[INET_ADDRSTRLEN];
 
     while(runServer) {
-        /* Signal for detecting CTRL + C - calls signal handler gracefulShutdown */
-        sigaction(SIGINT, &shutdownServer, NULL);
+        /* Signal for detecting CTRL + C or SIGTERM (through e.g. kill) - calls signal handler gracefulShutdown */
+        sigaction(SIGINT | SIGTERM, &shutdownServer, NULL);
 
         /* Accepting client connections - this is a blocking call */
         if((clientSocket = accept(serverSocket, (struct sockaddr*) &clientAddress, (socklen_t*) &addressLength)) == -1) {
@@ -500,6 +520,8 @@ void daemonizeServer() {
     struct rlimit resourceLimit;
     struct sigaction signalAction;
     char pathBuffer[200];
+
+    
 
     /* Clearing the file creation mask */
     umask(0);
