@@ -24,6 +24,7 @@
 #include "requestHandler.c"
 
 #define BUFFERSZ 1024
+
 #define NOARG 0
 #define PORTARG 1
 #define FILEARG 2
@@ -32,37 +33,57 @@
 #define ERROR 1
 #define INFO 2
 
+/* File paths */
 char *logPath = NULL, *errPath = NULL;
 char databasePath[] = "../../database/";
+
+/* Signal handler variables */
 volatile sig_atomic_t runServer = 1;
 volatile sig_atomic_t runChildren = 1;
 
+/* Data structures for keeping track of child processes */
 int *childArray = NULL;
 int childCtr = 0;
 
+/* Miscellaneous helper-functions */
+char *stringConcatenator(char* str1, char* str2, int num);
 int countCommands(char *buffer, char* *commands);
-request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, int clientSocket);
-void terminate(char *str);
-void serve(int port);
-void addChild(pid_t pid);
-void removeChild(pid_t pid);
+
+/* Signal handlers */
 void freeChild();
-void killChild();
-void gracefulShutdown(int signum);
-void terminateChildren();
+void gracefulShutdown();
+void timerHandler();
+
+/* Daemonization */
 void daemonizeServer();
-void serverLog(char *msg, int type);
+
+/* File locking functions */
 void doWriteLock(int fd, int lock);
 void doReadLock(int fd, int lock);
-char *stringConcatenator(char* str1, char* str2, int num);
+
+/* General server and request processing functions */
+void serve(int port);
+void terminate(char *str);
+request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, int clientSocket);
+
+/* Functions for managing child processes */
+void addChild(pid_t pid);
+void removeChild(pid_t pid);
+void killChild();
+void terminateChildren();
+
+/* Server logging functionality  */
+void serverLog(char *msg, int type);
 
 int main(int argc, char* argv[]) {
     int port = 1337, daemonize = 0, isNumber = 0, findCMDParam = NOARG;
+
     char usage[100] = "Usage: ";
     strcat(usage, argv[0]);
     strcat(usage, " [-p port] [-d] [-l logfile] [-h]\n");
     char helpStr[200] = "-p port - Listen to port with port number port\n-d - Run as a daemon as opposed to a program\n-l logfile - Log to file with name logfile (default is syslog)\n-h - Print help text\n";
 
+    /* Checking input flags and parameters */
     for (int i = 1; i < argc; i++) {
         if (findCMDParam == NOARG) {
             if (strcmp("-p", argv[i]) == 0) {
@@ -121,6 +142,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    /* If server is set to start as a daemon */
     if (daemonize > 0) {
         struct sockaddr_in serverAddress;
         memset(&serverAddress, 0, sizeof(serverAddress));
@@ -141,11 +163,12 @@ int main(int argc, char* argv[]) {
         }
         else {
             close(serverSocket);
-            printf("[+] Daemonizing server on port: %d  \n", port);
+            printf("[+] Daemonizing server on port: %d - use kill -2 <pid>/kill -15 <pid> to terminate\n", port);
             daemonizeServer();
         }
     }
     else {
+        /* Opening log for non-daemonized execution */
         openlog("SQL Server", LOG_PID | LOG_NDELAY, LOG_USER);
     }
 
@@ -157,6 +180,7 @@ void serve(int port) {
     char *error;
     pid_t pid;
 
+    /* Sleep timers - used for a more graceful and slow startup/shutdown */
     struct timespec sleepTime1;
     sleepTime1.tv_sec = 0;
     sleepTime1.tv_nsec = 500000000;
@@ -165,10 +189,19 @@ void serve(int port) {
     sleepTime2.tv_sec = 1;
     sleepTime2.tv_nsec = 0;
 
-    sigset_t new_mask, orig_mask;
-    sigemptyset(&new_mask);
-    sigaddset(&new_mask, SIGUSR1);
+    /* Signal masks */
+    sigset_t chld_unblock_mask, chld_block_mask, parent_mask;
 
+    sigemptyset(&chld_unblock_mask);
+    sigemptyset(&chld_block_mask);
+    sigemptyset(&parent_mask);
+
+    sigaddset(&chld_unblock_mask, SIGINT);
+    sigaddset(&chld_unblock_mask, SIGTERM);
+
+    sigaddset(&chld_block_mask, SIGINT);
+    sigaddset(&chld_block_mask, SIGTERM);
+    sigaddset(&chld_block_mask, SIGUSR1);
     /* Signal for graceful shutdown of server instance */
     struct sigaction shutdownServer;
     shutdownServer.sa_handler = gracefulShutdown;
@@ -187,12 +220,17 @@ void serve(int port) {
     sigemptyset(&terminateChild.sa_mask);
     terminateChild.sa_flags = 0;
 
+    /* Receiver buffer for each server instance */
     char *receiveBuffer = NULL;
+
+    /* Temporary strings used for string concatenation (server log) */
     char *tempStr1 = NULL, *tempStr2 = NULL;
 
+    /* For handling multiple requests at once */
     int nrOfCommands = 0;
     char* *commands = NULL;
 
+    /* Request pointers */
     request_t *request = NULL;
     request_t* *requests = NULL;
 
@@ -261,13 +299,24 @@ void serve(int port) {
     int addressLength = sizeof(clientAddress);
     char clientIP[INET_ADDRSTRLEN];
 
+    /* Setting parent signal mask (empty) */
+    if(sigprocmask(SIG_SETMASK, &parent_mask, NULL) < 0) {
+        terminate("Error occured when setting parent signal mask: ");
+    }
     while(runServer) {
         /* Signal for detecting CTRL + C or SIGTERM (through e.g. kill) - calls signal handler gracefulShutdown */
-        sigaction(SIGINT | SIGTERM, &shutdownServer, NULL);
+        if ((sigaction(SIGINT, &shutdownServer, NULL) < 0) || (sigaction(SIGTERM, &shutdownServer, NULL) < 0)) {
+            terminate("Error occurred when setting parent signal action (SIGINT, SIGTERM): ");
+        }
+
+        /* Signal for waiting for children to exit (prevents zombie processes) */
+        if (sigaction(SIGCHLD, &ignoreChild, NULL) < 0) {
+            terminate("Error occurred when setting parent signal action (SIGCHLD): ");
+        }
 
         /* Accepting client connections - this is a blocking call */
         if((clientSocket = accept(serverSocket, (struct sockaddr*) &clientAddress, (socklen_t*) &addressLength)) == -1) {
-            if (runServer) {
+            if (errno != EINTR) {
                 terminate("Error occurred when accepting new connection: ");
             }
         }
@@ -284,7 +333,11 @@ void serve(int port) {
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
-                setpgid(0, 0);
+                
+                if(sigprocmask(SIG_SETMASK, &chld_unblock_mask, NULL) < 0) {
+                    terminate("Error occurred when setting unblock signal mask: ");
+                }
+
                 tempStr1 = stringConcatenator("Child process was spawned (pid: ", "", getpid());
                 tempStr2 = stringConcatenator(tempStr1, ")", -1);
                 serverLog(tempStr2, SUCCESS);
@@ -305,7 +358,9 @@ void serve(int port) {
 
                 /* Infinite loop to continuously receive data from client */
                 while(1) {
-                    sigaction(SIGUSR1, &terminateChild, NULL);
+                    if(sigaction(SIGUSR1, &terminateChild, NULL) < 0){
+                        terminate("Error occurred when setting child signal action: ");
+                    }
 
                     /* Zeroing out receiving buffer */
                     memset(receiveBuffer, 0, BUFFERSZ);
@@ -333,8 +388,11 @@ void serve(int port) {
 
                             exit(EXIT_SUCCESS);
                         }
-                        else {
+                        else { /* If data was successfully received from client */
+                            /* Inserting null terminator */
                             receiveBuffer[strlen(receiveBuffer) - 2] = '\0';
+
+                            /* Server logging */
                             tempStr1 = stringConcatenator("Client sent ", receiveBuffer, -1);
                             tempStr2 = stringConcatenator(tempStr1, " (", (strlen(receiveBuffer) + 1));
                             free(tempStr1);
@@ -347,18 +405,22 @@ void serve(int port) {
                             free(tempStr1);
                             free(tempStr2);
 
+                            /* Counting number of commands sent (for handling multiple requests at once) */
                             nrOfCommands = countCommands(receiveBuffer, commands);
 
+                            /* If only one command was sent - parse immediately */
                             if (nrOfCommands >= 0 && nrOfCommands <= 1) {
                                 request = parse_request(receiveBuffer, &error);
                             }
-                            else if (nrOfCommands > 1) {
+                            else if (nrOfCommands > 1) { /* Else, if multiple requsts were received... */
                                 tempStr1 = stringConcatenator(clientIP,":", ntohs(clientAddress.sin_port));
                                 requests = multipleRequests(receiveBuffer, tempStr1, nrOfCommands, clientSocket);
                             }
 
+                            /* Zeroing out receiver buffer after processing data */
                             memset(receiveBuffer, 0, BUFFERSZ);
-
+                            
+                            /* If client sent .quit - terminate session gracefully */
                             if (request != NULL && request->request_type == RT_QUIT && nrOfCommands < 2) {
                                 send(clientSocket, "Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
 
@@ -385,7 +447,7 @@ void serve(int port) {
                                 destroy_request(request);
 
                                 exit(EXIT_SUCCESS);
-                            }
+                            } /* If parser returned an error */
                             else if (request == NULL && nrOfCommands < 2) {
                                 tempStr1 = stringConcatenator("Invalid request received from client - ", clientIP, -1);
                                 tempStr2 = stringConcatenator(tempStr1, ":", ntohs(clientAddress.sin_port));
@@ -408,27 +470,49 @@ void serve(int port) {
                                 /* Free character array for error message from parser */
                                 free(error);
                             }
-                            else if (request != NULL) {
+                            else if (request != NULL) { /* Else, if request was successfully parsed */
+                                /* Set signal mask to block set signals during I/O operations */
+                                if(sigprocmask(SIG_SETMASK, &chld_block_mask, NULL) < 0) {
+                                    terminate("Error occurred when setting block signal mask: ");
+                                }
+
                                 /* Send request to request handler to dispatch to proper function */
-                                sigprocmask(SIG_BLOCK, &new_mask, &orig_mask);
                                 handleRequest(request, clientSocket);
                                 request = NULL;
-                                sigprocmask(SIG_SETMASK, &orig_mask, NULL);
+
+                                /* Remove blocking of set signals */
+                                if(sigprocmask(SIG_SETMASK, &chld_unblock_mask, NULL) < 0) {
+                                    terminate("Error occurred when setting unblock signal mask: ");
+                                }
                             }
-                            else if (requests != NULL) {
-                                sigprocmask(SIG_BLOCK, &new_mask, &orig_mask);
+                            else if (requests != NULL) { /* Else, if (multiple) requests were successfully parsed */
+                                /* Set signal mask to block set signals during I/O operations */
+                                if(sigprocmask(SIG_SETMASK, &chld_block_mask, NULL) < 0) {
+                                    terminate("Error occurred when setting block signal mask: ");
+                                }
+
+                                /* Process requests - one by one */
                                 for (int i = 0; i < nrOfCommands; i++) {
                                     handleRequest(requests[i], clientSocket);
                                 }
+
                                 free (requests);
                                 requests = NULL;
-                                sigprocmask(SIG_SETMASK, &orig_mask, NULL);
+
+                                /* Remove blocking of set signals */
+                                if(sigprocmask(SIG_SETMASK, &chld_unblock_mask, NULL) < 0) {
+                                    terminate("Error occurred when setting unblock signal mask: ");
+                                }
                             }
                             
                         }
                     }
                     else {
-                        send(clientSocket, "Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Server shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+                        /* Signal to shut down child instance was received */
+
+                        send(clientSocket, "Server is shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n", sizeof("Server is shutting down. Bye-bye now! ¯\\_( ͡° ͜ʖ ͡°)_/¯\n"), 0);
+                        
+                        /* Shutdown and close client socket */
                         shutdown(clientSocket, SHUT_RDWR);
                         close(clientSocket);
 
@@ -449,15 +533,17 @@ void serve(int port) {
                 addChild(pid);
 
                 /* Parent closes client socket and continues to accept method to accept new connections */
-                close(clientSocket); 
-                
-                /* Parent calls signal handler freeChild to wait for children to exit (prevents zombie processes) */
-                sigaction(SIGCHLD, &ignoreChild, NULL);
+                close(clientSocket);
             }
         }
     }
+    /* Signal to stop main server instance was received (parent) */
     write(STDOUT_FILENO, "\n", 2);
     serverLog("Server received shutdown signal - performing graceful shutdown", INFO);
+    nanosleep(&sleepTime2, NULL);
+
+    /* Call terminateChildren to signal shutdown operation to child processes */
+    serverLog("Terminating child processes", INFO);
     terminateChildren();
     nanosleep(&sleepTime2, NULL);
 
@@ -508,7 +594,7 @@ void freeChild() {
     errno = curErr;
 }
 
-void gracefulShutdown(int signum) {
+void gracefulShutdown() {
     int curErr = errno;
     runServer = 0;
     errno = curErr;
@@ -587,12 +673,15 @@ void daemonizeServer() {
 
 void serverLog(char *msg, int type) {
     FILE* fp;
+
     time_t rawTime = time(NULL);
     struct tm *hrTime = localtime(&rawTime);
     char currentTime[25];
     char *buf = NULL;
+
     strftime(currentTime, 25, "%Y-%m-%d %H:%M:%S", hrTime);
 
+    /* Logging to syslog and to terminal */
     if (type == 0) {
         syslog(LOG_NOTICE, "%s", msg);
 
@@ -621,6 +710,7 @@ void serverLog(char *msg, int type) {
         buf = NULL;
     }
 
+    /* Logging to file */
     if (logPath != NULL && errPath != NULL) {
         if (type == SUCCESS) {
             fp = fopen(logPath, "a");
@@ -642,25 +732,32 @@ char *stringConcatenator(char *str1, char *str2, int num) {
     char *concatStr = NULL;
     char numStr[10];
 
+    /* If no number placeholder is present in string */
     if (num == -1) {
         concatStr = malloc(strlen(str1) + strlen(str2) + 1);
         strcpy(concatStr, str1);
         strcat(concatStr, str2);
     }
-    else {
+    else { /* Else if number is to be inserted (in end of string) */
         concatStr = malloc(strlen(str1) + strlen(str2) + 11);
         sprintf(numStr, "%d", num);
         strcpy(concatStr, str1);
         strcat(concatStr, str2);
         strcat(concatStr, numStr);
     }
+
     return concatStr;
 }
 
 void terminate (char *str) {
+    /* Retreiving error string */
     char* fullError = stringConcatenator(str, strerror(errno), -1);
+
+    /* Logging to server log */
     serverLog(fullError, ERROR);
     free(fullError);
+
+    /* Terminating */
     exit(EXIT_FAILURE);
 }
 
@@ -883,6 +980,20 @@ void removeChild(pid_t pid){
 }
 
 void terminateChildren() {
+    struct itimerval cur, prev;
+
+    struct sigaction timerAct;
+    sigemptyset(&timerAct.sa_mask);
+    timerAct.sa_handler = timerHandler;
+    timerAct.sa_flags = 0;
+    sigaction(SIGPROF, &timerAct, NULL);
+
+    cur.it_interval.tv_usec = 0;
+    cur.it_interval.tv_sec = 0;
+    cur.it_value.tv_usec = 0;
+    cur.it_value.tv_sec = (long int) 20;
+    setitimer(ITIMER_PROF, &cur, &prev);
+
     int currentChild = 0;
     for (int i = 0; i < childCtr; i++) {
         currentChild = childArray[i];
@@ -896,6 +1007,15 @@ void terminateChildren() {
         free(childArray);
         childArray = NULL;
     }
+}
+
+void timerHandler() {
+    pid_t pid = getpid();
+    write(STDOUT_FILENO, "Children took too long to exit - terminating forcefully\n", (strlen("Children took too long to exit - terminating forcefully\n") + 1));
+
+    kill(-pid, SIGKILL);
+
+    exit(EXIT_FAILURE);
 }
 
 void killChild() {
