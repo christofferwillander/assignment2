@@ -341,9 +341,10 @@ void serve(int port) {
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
-
-                sigaction(SIGINT, &ignoreInt, NULL);
-                sigaction(SIGTERM, &ignoreInt, NULL);
+                
+                if ((sigaction(SIGINT, &ignoreInt, NULL) < 0) || (sigaction(SIGTERM, &ignoreInt, NULL) < 0)) {
+                    terminate("Error occurred when setting child signal action (SIGINT, SIGTERM): ");
+                }
                 
                 if(sigprocmask(SIG_SETMASK, &chld_unblock_mask, NULL) < 0) {
                     terminate("Error occurred when setting unblock signal mask: ");
@@ -586,14 +587,11 @@ void serve(int port) {
 }
 
 void freeChild() {
-    int curErr = errno;
+    int status = 0, curErr = errno;
     pid_t pid;
     char *tempStr1, *tempStr2;
 
-    if((pid = waitpid(-1, NULL, WNOHANG)) == -1){
-        serverLog("Problem occurred when terminating child", ERROR);
-    }
-    else{
+    while((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         removeChild(pid);
         tempStr1 = stringConcatenator("Child was succesfully terminated (pid: ", "", pid);
         tempStr2 = stringConcatenator(tempStr1, ")", -1);
@@ -952,7 +950,7 @@ void removeChild(pid_t pid){
             }
 
             childCtr--;
-
+            
             tempStr1 = stringConcatenator("Removed child with pid: ", "", pid);
             tempStr2 = stringConcatenator(tempStr1, " from array - current amount of children: ", childCtr);
             serverLog(tempStr2, INFO);
