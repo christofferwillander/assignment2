@@ -49,14 +49,19 @@ int checkBuffersize(request_t *req, FILE *ptr)
     int sizecounter = 0;
     int *sizeArrFromFile = malloc(columns);
     int sizeFromFileCounter = 0;
-    int retval = 1;
+    int retval = -1 ;
     fseek(ptr, 0, SEEK_SET);
     //find all the sizes in order in the request
     while (temp != NULL)
     {   
         if(temp->data_type == DT_VARCHAR)
         {
+            printf("VARCHAR (%d)\n", sizecounter);
             sizeArr[sizecounter++] = strlen(temp->char_val);
+        }
+        else if (temp->data_type == DT_INT) {
+            printf("INT (%d)\n", sizecounter);
+            sizeArr[sizecounter++] = -1;
         }
 
         end=temp->next;
@@ -69,28 +74,56 @@ int checkBuffersize(request_t *req, FILE *ptr)
     len = (int)(temp3 - temp1) + 1;
     temp2 = malloc(len);
     memcpy(temp2, temp1, len);
+
     //Find all the max sizes from the table file
-    for(int i = 0; i < strlen(temp2); i++)
-    {
-        if( isdigit(temp2[i]) != 0)
-        {
-            //printf("dig -> %c\n", temp2[i]);
-            sizeArrFromFile[sizeFromFileCounter++] = (temp2[i] - '0') + 2; // +2 compensate for the '' signs
+
+    char *strPtr1 = temp2, *strPtr2 = NULL;
+
+    int strLength = 0;
+    int ctr = 0;
+    int retreiveNum = 0;
+    char *tempStr;
+
+    while (strstr(strPtr1, ":") != NULL) {
+        strPtr2 = strPtr1;
+        strPtr1 = strstr(strPtr1, ":");
+        strLength = (strPtr1 - strPtr2);
+        if (strLength > 0 && strPtr1 != NULL) {
+            tempStr = malloc(strLength + 1);
+            memcpy(tempStr, strPtr2, strLength);
+            tempStr[strLength] = '\0';
+            strPtr1 += 1;
+
+            if (strcmp("INT", tempStr) == 0) {
+                ctr++;
+            }
+            else if (strcmp("VARCHAR", tempStr) == 0) {
+                ctr++;
+                retreiveNum = 1;
+            }
+            else if (retreiveNum == 1 && ctr > 0) {
+                sizeArrFromFile[(ctr - 1)] = atoi(tempStr);
+                printf("VARCHAR SIZE %d DETECTED (index %d) \n", sizeArrFromFile[ctr - 1], ctr-1);
+                retreiveNum = 0;
+            }
+
+            free(tempStr);
         }
     }
-
     //compare the sizes found, if the incomming size exceeds the max size it will not add anything to the table
-    for(int i = 0; i < sizeFromFileCounter; i++)
+    for(int i = 0; (i < sizecounter) && (retval != 1); i++)
     {
         //printf("cmd-> %d\t vs\t org -> %d\n", sizeArrFromFile[i], sizeArr[i]);
-        if(sizeArrFromFile[i] < sizeArr[i])
+        if((sizeArr[i] <= sizeArrFromFile[i]) && (sizeArr[i] != -1))
         {
+            printf("Correct varchar size (index %d)\n", i);
             retval = 0;
         }
-
+        else if (sizeArr[i] != -1) {
+            retval = 1;
+            printf("fuck\n");
+        }
     }
-
-    //printf("string2 %s\n", temp2);
 
     free(sizeArr);
     free(sizeArrFromFile);
@@ -117,7 +150,7 @@ void insertToTable(request_t *req, int clientSocket)
 {
     char *intValue;
     char *charValue;
-    int columnCount=0;
+    int columnCount = 0;
     char *filePath = malloc(strlen(databasePath) + strlen(req->table_name) + 1);
     strcpy(filePath, databasePath);
     strcat(filePath,req->table_name);
@@ -128,7 +161,7 @@ void insertToTable(request_t *req, int clientSocket)
     {
         send(clientSocket, "ERROR: Table does not exist\n", strlen("ERROR: Table does not exist\n"), 0);
     }
-    else if (checkBuffersize(req, file) == 0)
+    else if (checkBuffersize(req, file) == 1)
     {
        send(clientSocket, "VARCHAR exceeds size\n", sizeof("VARCHAR exceeds size\n"), 0);
     }
