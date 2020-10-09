@@ -65,7 +65,6 @@ void daemonizeServer();
 
 /* File locking function */
 void doLock(int fd, int lock, int lockType);
-//void doReadLock(int fd, int lock);
 
 /* General server and request processing functions */
 void serve(int port);
