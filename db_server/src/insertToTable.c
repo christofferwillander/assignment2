@@ -118,12 +118,8 @@ int validateInput(request_t *request, FILE *ptr, int clientSocket) {
         }
     }
 
-    /* Freeing allocated memory */
+    /* Freeing allocated memory for tempLine */
     free(tempLine);
-    free(inputTypes);
-    free(inputSizes); 
-    free(tableTypes);
-    free(tableSizes);
 
     /* Ensuring amount of input columns correspond to the amount in the table */
     if (tableCounter != inputCounter) {
@@ -147,6 +143,14 @@ int validateInput(request_t *request, FILE *ptr, int clientSocket) {
         }
     }
 
+    /* Freeing allocated memory */
+    if (tableTypes != NULL && tableSizes != NULL && inputTypes != NULL && inputSizes != NULL) {
+        free(inputTypes);
+        free(inputSizes); 
+        free(tableTypes);
+        free(tableSizes);
+    }
+    
     return statusCode;
 }
 
