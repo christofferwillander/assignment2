@@ -202,17 +202,19 @@ void serve(int port) {
     sigemptyset(&chld_block_mask);
     sigemptyset(&parent_mask);
 
-    sigaddset(&chld_unblock_mask, SIGINT);
-    sigaddset(&chld_unblock_mask, SIGTERM);
-
-    sigaddset(&chld_block_mask, SIGINT);
-    sigaddset(&chld_block_mask, SIGTERM);
     sigaddset(&chld_block_mask, SIGUSR1);
+
     /* Signal for graceful shutdown of server instance */
     struct sigaction shutdownServer;
     shutdownServer.sa_handler = gracefulShutdown;
     sigemptyset(&shutdownServer.sa_mask);
     shutdownServer.sa_flags = 0;
+
+    /* Signal for ignoring SIGINT, SIGTERM in child processes */
+    struct sigaction ignoreInt;
+    ignoreInt.sa_handler = SIG_IGN;
+    sigemptyset(&ignoreInt.sa_mask);
+    ignoreInt.sa_flags = 0;
 
      /* Signal for ignoring (freeing) terminated child processes */
     struct sigaction ignoreChild;
@@ -339,6 +341,9 @@ void serve(int port) {
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
+
+                sigaction(SIGINT, &ignoreInt, NULL);
+                sigaction(SIGTERM, &ignoreInt, NULL);
                 
                 if(sigprocmask(SIG_SETMASK, &chld_unblock_mask, NULL) < 0) {
                     terminate("Error occurred when setting unblock signal mask: ");
@@ -921,7 +926,7 @@ void addChild(pid_t pid) {
     childArray[childCtr++] = pid;
 
     tempStr1 = stringConcatenator("Added child with pid: ", "", pid);
-    tempStr2 = stringConcatenator(tempStr1, " to array", -1);
+    tempStr2 = stringConcatenator(tempStr1, " to array - current amount of children: ", childCtr);
     serverLog(tempStr2, INFO);
     free(tempStr1);
     free(tempStr2);
@@ -938,12 +943,18 @@ void removeChild(pid_t pid){
         }
 
         if (foundPos != -1) {
-            childArray[foundPos] = childArray[(childCtr - 1)];
-            childArray[(childCtr - 1)] = -1;
+            if (childCtr == 1) {
+                childArray[foundPos] = -1;
+            }
+            else if (childCtr > 1) {
+                childArray[foundPos] = childArray[(childCtr - 1)];
+                childArray[(childCtr - 1)] = -1;
+            }
+
             childCtr--;
 
             tempStr1 = stringConcatenator("Removed child with pid: ", "", pid);
-            tempStr2 = stringConcatenator(tempStr1, " from array", -1);
+            tempStr2 = stringConcatenator(tempStr1, " from array - current amount of children: ", childCtr);
             serverLog(tempStr2, INFO);
             free(tempStr1);
             free(tempStr2);
@@ -952,29 +963,36 @@ void removeChild(pid_t pid){
 }
 
 void terminateChildren() {
+    /* Timer structure */
     struct itimerval cur, prev;
 
+    /* Signal for timer interrupt */
     struct sigaction timerAct;
     sigemptyset(&timerAct.sa_mask);
     timerAct.sa_handler = timerHandler;
     timerAct.sa_flags = 0;
     sigaction(SIGPROF, &timerAct, NULL);
 
+    /* Setting timer parameters */
     cur.it_interval.tv_usec = 0;
     cur.it_interval.tv_sec = 0;
     cur.it_value.tv_usec = 0;
-    cur.it_value.tv_sec = (long int) 20;
+    cur.it_value.tv_sec = (long int) 30;
     setitimer(ITIMER_PROF, &cur, &prev);
 
     int currentChild = 0;
+
+    /* Sending SIGUSR1 (shutdown signal) to children - one by one */
     for (int i = 0; i < childCtr; i++) {
         currentChild = childArray[i];
-        kill(childArray[i], SIGUSR1);
+        kill(currentChild, SIGUSR1);
     }
 
+    /* Wait until all children have terminated */
     while(childCtr != 0) {
     }
 
+    /* If all children have been terminated - free childArray memory */
     if (childCtr == 0) {
         free(childArray);
         childArray = NULL;
@@ -985,11 +1003,11 @@ void timerHandler() {
     pid_t pid = getpid();
     write(STDOUT_FILENO, "Children took too long to exit - terminating forcefully\n", (strlen("Children took too long to exit - terminating forcefully\n") + 1));
     
+    /* Freeing what can be freed - there will be memory leaks */
     free(childArray);
     childArray = NULL;
     
     kill(-pid, SIGKILL);
-    exit(EXIT_FAILURE);
 }
 
 void killChild() {
