@@ -61,7 +61,7 @@ int validateInput(request_t *request, FILE *ptr, int clientSocket) {
         tableSizes = malloc(sizeof(int) * nrOfCols);
     }
 
-
+    /* Fetching data types and sizes from incoming request */
     while (curCol != NULL) {
         if (curCol->data_type == DT_INT) {
             inputTypes[inputCounter] = DT_INT;
@@ -75,15 +75,19 @@ int validateInput(request_t *request, FILE *ptr, int clientSocket) {
         curCol = curCol->next;
     }
 
+    /* Setting file pointer to beginning of file */
     fseek(ptr, 0, SEEK_SET);
-    char *tempLine = malloc(sizeof(char) * 100);
-    fgets(tempLine, 100, ptr);
+    char *tempLine = malloc(sizeof(char) * 200);
+
+    /* Reading database file header */
+    fgets(tempLine, 200, ptr);
 
     char *strPtr1 = NULL, *strPtr2 = NULL, *tempStr = NULL;
     int strLength = 0, retrieveSize = 0;
 
     strPtr1 = tempLine;
 
+    /* Determining data types and sizes based on database file header */
     while (strstr(strPtr1, ":") != NULL) {
         strPtr2 = strPtr1;
         strPtr1 = strstr(strPtr1, ":");
@@ -109,11 +113,17 @@ int validateInput(request_t *request, FILE *ptr, int clientSocket) {
                 retrieveSize = 0;
             }
 
+            /* Freeing memory for temporary string */
             free(tempStr);
         }
     }
 
+    /* Freeing allocated memory */
     free(tempLine);
+    free(inputTypes);
+    free(inputSizes); 
+    free(tableTypes);
+    free(tableSizes);
 
     /* Ensuring amount of input columns correspond to the amount in the table */
     if (tableCounter != inputCounter) {
