@@ -116,6 +116,10 @@ int main(int argc, char* argv[]) {
                     exit(EXIT_FAILURE);
                 }
             }
+            else if (strcmp("-s", argv[i]) == 0) {
+                printf("ERROR: Only fork is implemented for request handling\n%s", usage);
+                exit(EXIT_FAILURE);
+            }
             else {
                 printf("ERROR: Incorrect input parameter\n%s", usage);
                 exit(EXIT_FAILURE);
