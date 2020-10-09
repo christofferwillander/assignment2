@@ -610,6 +610,7 @@ void gracefulShutdown() {
 }
 
 void daemonizeServer() {
+    char *tempStr1 = NULL;
     int fileDesc0, fileDesc1, fileDesc2;
     pid_t pid;
     struct rlimit resourceLimit;
@@ -678,6 +679,9 @@ void daemonizeServer() {
     fileDesc2 = dup(0);
 
     openlog("SQL Server Daemon", LOG_PID | LOG_NDELAY, LOG_USER);
+    tempStr1 = stringConcatenator("Server daemon succesfully started - pid: ", "", getpid());
+    serverLog(tempStr1, SUCCESS);
+    free(tempStr1);
 }
 
 void serverLog(char *msg, int type) {
