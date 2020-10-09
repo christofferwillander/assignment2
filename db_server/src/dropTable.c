@@ -5,8 +5,13 @@
 
 #include "../include/request.h"
 
+#define UNLOCK 0
+#define LOCK 1
+#define WRITE 0
+#define READ 1
+
+extern void doLock(int fd, int lock, int lockType);
 extern char databasePath[];
-extern void doWriteLock(int fd, int lock);
 
 void drop(request_t *req, int clientSocket)
 {
@@ -15,7 +20,7 @@ void drop(request_t *req, int clientSocket)
     strcat(filePath,req->table_name);
 
     FILE *file = fopen(filePath, "w");
-    doWriteLock(fileno(file), 1);
+    doLock(fileno(file), LOCK, WRITE);
 
 
     if(access(filePath, F_OK) == -1)

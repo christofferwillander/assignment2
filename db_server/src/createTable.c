@@ -4,8 +4,13 @@
 #include <unistd.h>
 #include "../include/request.h"
 
+#define UNLOCK 0
+#define LOCK 1
+#define WRITE 0
+#define READ 1
+
+extern void doLock(int fd, int lock, int lockType);
 extern char databasePath[];
-extern void doWriteLock(int fd, int lock);
 
 void writeToFile(FILE *ptr, char *name, char *dataT, int size, int check)
 {
@@ -47,7 +52,7 @@ void createTable(request_t *req, int clientSocket)
     else 
     {
         FILE *file = fopen(filePath, "w+");
-        doWriteLock(fileno(file), 1);
+        doLock(fileno(file), LOCK, WRITE);
         column_t *end;
         column_t *temp = req->columns;
 
@@ -76,7 +81,7 @@ void createTable(request_t *req, int clientSocket)
             temp = end;   
 
         }
-        doWriteLock(fileno(file), 0);
+        doLock(fileno(file), UNLOCK, WRITE);
         fclose(file);
         send(clientSocket, "Table was succesfully created\n", sizeof("Table was succesfully created\n"), 0);
     }

@@ -3,8 +3,14 @@
 #include <string.h>
 #include <unistd.h>
 #include "../include/request.h"
+
+#define UNLOCK 0
+#define LOCK 1
+#define WRITE 0
+#define READ 1
+
+extern void doLock(int fd, int lock, int lockType);
 extern char databasePath[];
-extern void doReadLock(int fd, int lock);
 
 void selectTable(request_t *req, int clientSocket)
 {
@@ -25,7 +31,7 @@ void selectTable(request_t *req, int clientSocket)
         fseek(ptr, 0, SEEK_SET);
         char getString[256];
         
-        doReadLock(fileno(ptr), 1);
+        doLock(fileno(ptr), LOCK, READ);
 
         //skip the first line
         char lineTemp[100];
@@ -55,7 +61,7 @@ void selectTable(request_t *req, int clientSocket)
             }
         }
         send(clientSocket, "\n", strlen("\n"), 0);
-        doReadLock(fileno(ptr), 0);
+        doLock(fileno(ptr), UNLOCK, READ);
         fclose(ptr);
     }
 

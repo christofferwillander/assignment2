@@ -5,8 +5,13 @@
 
 #include "../include/request.h"
 
+#define UNLOCK 0
+#define LOCK 1
+#define WRITE 0
+#define READ 1
+
+extern void doLock(int fd, int lock, int lockType);
 extern char databasePath[];
-extern void doReadLock(int fd, int lock);
 
 void getSchema(request_t *req, int clientSocket)
 { 
@@ -23,7 +28,7 @@ void getSchema(request_t *req, int clientSocket)
         FILE *ptr;
         ptr = fopen(filePath, "r");
 
-        doReadLock(fileno(ptr), 1);
+        doLock(fileno(ptr), LOCK, READ);
 
         char lineTemp[200];
         fgets(lineTemp, 200, ptr);
@@ -55,7 +60,7 @@ void getSchema(request_t *req, int clientSocket)
         }
 
         send(clientSocket, "\n", sizeof("\n"), 0);
-        doReadLock(fileno(ptr), 0);
+        doLock(fileno(ptr), UNLOCK, READ);
         fclose(ptr);
     }
     free(filePath);

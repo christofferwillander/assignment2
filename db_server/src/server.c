@@ -33,6 +33,12 @@
 #define ERROR 1
 #define INFO 2
 
+#define WRITE 0
+#define READ 1
+
+#define UNLOCK 0
+#define LOCK 1
+
 /* File paths */
 char *logPath = NULL, *errPath = NULL;
 char databasePath[] = "../../database/";
@@ -57,9 +63,9 @@ void timerHandler();
 /* Daemonization */
 void daemonizeServer();
 
-/* File locking functions */
-void doWriteLock(int fd, int lock);
-void doReadLock(int fd, int lock);
+/* File locking function */
+void doLock(int fd, int lock, int lockType);
+//void doReadLock(int fd, int lock);
 
 /* General server and request processing functions */
 void serve(int port);
@@ -835,100 +841,66 @@ request_t* *multipleRequests(char *buffer, char *clientAddr, int nrOfCommands, i
     return requests;
 }
 
-void doWriteLock(int fd, int lock) {
+void doLock(int fd, int lock, int lockType) {
     struct flock fileLock;
     char *tempStr1 = NULL, *tempStr2 = NULL;
+    char type[15];
 
-    if (lock) {
+    if(lockType == WRITE) {
+        sprintf(type, "write");
         fileLock.l_type = F_WRLCK;
-        fileLock.l_start = 0;
-        fileLock.l_whence = SEEK_SET;
-        fileLock.l_len = 0;
-        fileLock.l_pid = getpid();
-        
-        if(fcntl(fd, F_SETLKW, &fileLock) == -1) {
-            tempStr1 = stringConcatenator("Could not acquire write lock for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, ERROR);
-            free(tempStr1);
-            free(tempStr2);
-        }
-        else {
-            tempStr1 = stringConcatenator("Write lock acquired for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, INFO);
-            free(tempStr1);
-            free(tempStr2);
-        }
     }
-    else {
-        fileLock.l_type = F_ULOCK;
-        fileLock.l_type = 0;
-        fileLock.l_whence = SEEK_SET;
-        fileLock.l_len = 0;
-        fileLock.l_pid = getpid();
-
-        if (fcntl(fd, F_SETLK, &fileLock) == -1) {
-            tempStr1 = stringConcatenator("Could not release write lock for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, ERROR);
-            free(tempStr1);
-            free(tempStr2);
-        }
-        else {
-            tempStr1 = stringConcatenator("Released write lock for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, INFO);
-            free(tempStr1);
-            free(tempStr2);
-        }
+    else if (lockType == READ) {
+        sprintf(type, "read");
+        fileLock.l_type = F_RDLCK;
     }
-}
-
-void doReadLock(int fd, int lock) {
-    struct flock fileLock;
-    char *tempStr1 = NULL, *tempStr2 = NULL;
 
     if (lock) {
-        fileLock.l_type = F_RDLCK;
         fileLock.l_start = 0;
         fileLock.l_whence = SEEK_SET;
         fileLock.l_len = 0;
         fileLock.l_pid = getpid();
         
         if(fcntl(fd, F_SETLKW, &fileLock) == -1) {
-            tempStr1 = stringConcatenator("Could not acquire read lock for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, ERROR);
+            tempStr1 = stringConcatenator("Could not acquire ", type, -1);
+            tempStr2 = stringConcatenator(tempStr1, " lock for file with fd: ", fd);
+            free(tempStr1);
+            tempStr1 = stringConcatenator(tempStr2, " - pid: ", getpid());
+            serverLog(tempStr1, ERROR);
             free(tempStr1);
             free(tempStr2);
         }
         else {
-            tempStr1 = stringConcatenator("Read lock acquired for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, INFO);
+            tempStr1 = stringConcatenator("Acquired ", type, -1);
+            tempStr2 = stringConcatenator(tempStr1, " lock for file with fd: ", fd);
+            free(tempStr1);
+            tempStr1 = stringConcatenator(tempStr2, " - pid: ", getpid());
+            serverLog(tempStr1, INFO);
             free(tempStr1);
             free(tempStr2);
         }
     }
     else {
         fileLock.l_type = F_ULOCK;
-        fileLock.l_type = 0;
         fileLock.l_whence = SEEK_SET;
         fileLock.l_len = 0;
         fileLock.l_pid = getpid();
 
         if (fcntl(fd, F_SETLK, &fileLock) == -1) {
-            tempStr1 = stringConcatenator("Could not release read lock for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, ERROR);
+            tempStr1 = stringConcatenator("Could not release ", type, -1);
+            tempStr2 = stringConcatenator(tempStr1, " lock for file with fd: ", fd);
+            free(tempStr1);
+            tempStr1 = stringConcatenator(tempStr2, " - pid: ", getpid());
+            serverLog(tempStr1, ERROR);
             free(tempStr1);
             free(tempStr2);
         }
         else {
-            tempStr1 = stringConcatenator("Released read lock for file with fd: ", "", fd);
-            tempStr2 = stringConcatenator(tempStr1, " - pid: ", getpid());
-            serverLog(tempStr2, INFO);
+            tempStr1 = stringConcatenator("Released ", type, -1);
+            tempStr2 = stringConcatenator(tempStr1, " lock for file with fd: ", fd);
+            free(tempStr1);
+            tempStr1 = stringConcatenator(tempStr2, " - pid: ", getpid());
+            serverLog(tempStr1, INFO);
             free(tempStr1);
             free(tempStr2);
         }
@@ -1012,9 +984,11 @@ void terminateChildren() {
 void timerHandler() {
     pid_t pid = getpid();
     write(STDOUT_FILENO, "Children took too long to exit - terminating forcefully\n", (strlen("Children took too long to exit - terminating forcefully\n") + 1));
-
+    
+    free(childArray);
+    childArray = NULL;
+    
     kill(-pid, SIGKILL);
-
     exit(EXIT_FAILURE);
 }
 

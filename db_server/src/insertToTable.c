@@ -4,8 +4,14 @@
 #include <unistd.h>
 
 #include "../include/request.h"
+
+#define UNLOCK 0
+#define LOCK 1
+#define WRITE 0
+#define READ 1
+
+extern void doLock(int fd, int lock, int lockType);
 extern char databasePath[];
-extern void doWriteLock(int fd, int lock);
 
 void insertToFile(FILE *ptr, char *value, int check);
 int numberOfColumns(FILE *ptr);
@@ -116,7 +122,7 @@ void insertToTable(request_t *req, int clientSocket)
     strcpy(filePath, databasePath);
     strcat(filePath,req->table_name);
     FILE *file = fopen(filePath, "a+");
-    doWriteLock(fileno(file), 1);
+    doLock(fileno(file), LOCK, WRITE);
 
     if(access(filePath, F_OK) == -1)
     {
@@ -164,7 +170,7 @@ void insertToTable(request_t *req, int clientSocket)
         send(clientSocket, "Successfully added to table\n", sizeof("Successfully added to table\n"), 0);
         
     }
-    doWriteLock(fileno(file), 0);
+    doLock(fileno(file), UNLOCK, WRITE);
     fclose(file);
     free(filePath);
 }
