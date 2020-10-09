@@ -61,7 +61,7 @@ void gracefulShutdown();
 void timerHandler();
 
 /* Daemonization */
-void daemonizeServer();
+void daemonizeServer(int port);
 
 /* File locking function */
 void doLock(int fd, int lock, int lockType);
@@ -168,8 +168,7 @@ int main(int argc, char* argv[]) {
         }
         else {
             close(serverSocket);
-            printf("[+] Daemonizing server on port: %d - use kill -2 <pid>/kill -15 <pid> to terminate\n", port);
-            daemonizeServer();
+            daemonizeServer(port);
         }
     }
     else {
@@ -608,8 +607,8 @@ void gracefulShutdown() {
     errno = curErr;
 }
 
-void daemonizeServer() {
-    char *tempStr1 = NULL;
+void daemonizeServer(int port) {
+    char *tempStr1 = NULL, *tempStr2 = NULL;
     int fileDesc0, fileDesc1, fileDesc2;
     pid_t pid;
     struct rlimit resourceLimit;
@@ -665,6 +664,18 @@ void daemonizeServer() {
         perror("ERROR: Could not change directory");
         exit(EXIT_FAILURE);
     }
+
+    openlog("SQL Server Daemon", LOG_PID | LOG_NDELAY, LOG_USER);
+    tempStr1 = stringConcatenator("Daemonizing server on port: ", "", port);
+    tempStr2 = stringConcatenator(tempStr1, " - use kill -2 <", getpid());
+    free(tempStr1);
+    tempStr1 = stringConcatenator(tempStr2, ">/kill -15 <", getpid());
+    free(tempStr2);
+    tempStr2 = stringConcatenator(tempStr1, "> to terminate", -1);
+    serverLog(tempStr2, SUCCESS);
+    free(tempStr1);
+    free(tempStr2);
+    closelog();
 
     if(resourceLimit.rlim_max == RLIM_INFINITY) {
         resourceLimit.rlim_max = 1024;
