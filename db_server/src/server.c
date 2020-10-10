@@ -51,6 +51,7 @@ volatile sig_atomic_t runChildren = 1;
 /* Data structures for keeping track of child processes */
 int *childArray = NULL;
 int childCtr = 0;
+int allocCtr = 0;
 
 /* Miscellaneous helper-functions */
 char *stringConcatenator(char* str1, char* str2, int num);
@@ -955,13 +956,25 @@ void doLock(int fd, int lock, int lockType) {
 
 void addChild(pid_t pid) {
     char *tempStr1 = NULL, *tempStr2 = NULL;
+    int *oldPtr = NULL;
 
-    if (childArray == NULL) {
+    if (childArray == NULL && allocCtr == 0) {
+        printf("Allokerar nytt minne\n");
         childArray = malloc(sizeof(int)*10);
+        allocCtr = 10;
     }
 
-    if (childCtr % 10 == 0) {
-        childArray = realloc(childArray, (sizeof(int) * (childCtr + 10)));
+    if ((childCtr + 1) > allocCtr) {
+        oldPtr = childArray;
+        if((childArray = realloc(childArray, (sizeof(int) * (childCtr + 10)))) == NULL) {
+            free(oldPtr);
+            terminate("Something went very wrong: ");
+        }
+        else
+        {
+            allocCtr += 10;
+            oldPtr = NULL;
+        }
     }
 
     childArray[childCtr++] = pid;
@@ -1001,6 +1014,12 @@ void removeChild(pid_t pid){
             free(tempStr2);
         }
     }
+    
+    if (childCtr == 0) {
+        free(childArray);
+        childArray = NULL;
+        allocCtr = 0;
+    }
 }
 
 void terminateChildren() {
@@ -1035,8 +1054,10 @@ void terminateChildren() {
 
     /* If all children have been terminated - free childArray memory */
     if (childCtr == 0) {
+        serverLog("Freeing allocated memory to child array", INFO);
         free(childArray);
         childArray = NULL;
+        allocCtr = 0;
     }
 }
 
@@ -1047,6 +1068,7 @@ void timerHandler() {
     /* Freeing what can be freed - there will be memory leaks */
     free(childArray);
     childArray = NULL;
+    allocCtr = 0;
     
     kill(-pid, SIGKILL);
 }
