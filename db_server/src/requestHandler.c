@@ -26,8 +26,8 @@ void handleRequest(request_t *request, int clientSocket) {
             createTable(request, clientSocket);
             break;
         case RT_TABLES:
-            serverLog("Tables command received", INFO);
-            listTables(databasePath, clientSocket);
+            serverLog("Table listing reqeust received", INFO);
+            listTables(clientSocket);
             break;
         case RT_SCHEMA:
             tempStr1 = stringConcatenator("Schema request received - ", request->table_name, -1);

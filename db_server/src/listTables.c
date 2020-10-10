@@ -3,8 +3,10 @@
 #include <dirent.h>
 #include <string.h>
 
+extern char databasePath[];
+extern void serverLog(char *msg, int type);
 
-void listTables(char* databasePath, int clientSocket) {
+void listTables(int clientSocket) {
     /* Directory pointer, directory entry pointer */
     DIR *directory = opendir(databasePath);
     struct dirent *directoryEntry;

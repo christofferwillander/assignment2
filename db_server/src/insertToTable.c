@@ -23,10 +23,12 @@ int numberOfColumns(FILE *ptr)
 
     char lineTemp[200];
     char *curPos;
-
+    
+    /* Set file pointer to beginning of file and retrieve first line (i.e header) */
     fseek(ptr, 0, SEEK_SET);
     fgets(lineTemp, 200, ptr);
 
+    /* Search through header for number of occurrences of "INT" */
     curPos = lineTemp;
 
     while(strstr(curPos, "INT") != NULL) {
@@ -34,6 +36,7 @@ int numberOfColumns(FILE *ptr)
         count++;
     }
 
+    /* Search through header for number of occurrences of "VARCHAR" */
     curPos = lineTemp;
 
     while(strstr(curPos, "VARCHAR") != NULL) {
