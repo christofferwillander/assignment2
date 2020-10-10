@@ -20,9 +20,8 @@ void listTables(int clientSocket) {
         while((directoryEntry = readdir(directory)) != NULL) {
             /* If file is not a hidden file, print name (i.e. table name) */
             if (directoryEntry->d_name[0] != '.') {
-
-                send(clientSocket, (directoryEntry->d_name), strlen((directoryEntry->d_name))*sizeof(char), 0);
-                send(clientSocket, "\n", sizeof(char), 0);
+                send(clientSocket, (directoryEntry->d_name), strlen((directoryEntry->d_name))*sizeof(char) + 1, 0);
+                send(clientSocket, "\n", sizeof("\n"), 0);
             }
         }
         closedir(directory);

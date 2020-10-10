@@ -32,6 +32,7 @@
 #define SUCCESS 0
 #define ERROR 1
 #define INFO 2
+#define AUDIT 3
 
 #define WRITE 0
 #define READ 1
@@ -40,7 +41,7 @@
 #define LOCK 1
 
 /* File paths */
-char *logPath = NULL, *errPath = NULL;
+char *logPath = NULL, *errPath = NULL, *auditPath = NULL;
 char databasePath[] = "../../database/";
 
 /* Signal handler variables */
@@ -145,6 +146,10 @@ int main(int argc, char* argv[]) {
                 errPath = malloc(strlen(argv[i]) + strlen(".err") + 1);
                 strcpy(errPath, argv[i]);
                 strcat(errPath, ".err");
+
+                auditPath = malloc(strlen(argv[i]) + strlen(".audit") + 1);
+                strcpy(errPath, argv[i]);
+                strcat(errPath, ".audit");
 
                 findCMDParam = NOARG;
             }
@@ -581,6 +586,9 @@ void serve(int port) {
 
         free(errPath);
         errPath = NULL;
+
+        free(auditPath);
+        auditPath = NULL;
     }
 
      /* Closing connection to syslog server */
@@ -593,6 +601,7 @@ void freeChild() {
     pid_t pid;
     char *tempStr1, *tempStr2;
 
+    /* Looping waitpid to ensure ALL children processes which have exited are being reaped */
     while((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         removeChild(pid);
         tempStr1 = stringConcatenator("Child was succesfully terminated (pid: ", "", pid);
@@ -709,7 +718,7 @@ void serverLog(char *msg, int type) {
     strftime(currentTime, 25, "%Y-%m-%d %H:%M:%S", hrTime);
 
     /* Logging to syslog and to terminal */
-    if (type == 0) {
+    if (type == SUCCESS) {
         syslog(LOG_NOTICE, "%s", msg);
 
         buf = malloc(strlen(currentTime) + strlen(" [+] ") + strlen(msg) + strlen("\n") + 1);
@@ -718,7 +727,7 @@ void serverLog(char *msg, int type) {
         free(buf);
         buf = NULL;
     }
-    else if (type == 1) {
+    else if (type == ERROR) {
         syslog(LOG_ERR, "%s", msg);
         
         buf = malloc(strlen(currentTime) + strlen(" [-] ") + strlen(msg) + strlen("\n") + 1);
@@ -727,11 +736,19 @@ void serverLog(char *msg, int type) {
         free(buf);
         buf = NULL;
     }
-    else if (type == 2) {
+    else if (type == INFO) {
         syslog(LOG_INFO, "%s\n", msg);
         
         buf = malloc(strlen(currentTime) + strlen(" [*] ") + strlen(msg) + strlen("\n") + 1);
         sprintf(buf, "%s [*] %s\n", currentTime, msg);
+        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+        free(buf);
+        buf = NULL;
+    }
+    else if (type == AUDIT) {
+        syslog(LOG_INFO, "%s\n", msg);
+        buf = malloc(strlen(currentTime) + strlen(" [#] AUDIT: ") + strlen(msg) + strlen("\n") + 1);
+        sprintf(buf, "%s [#] AUDIT: %s\n", currentTime, msg);
         write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
         free(buf);
         buf = NULL;
@@ -751,6 +768,11 @@ void serverLog(char *msg, int type) {
             fp = fopen(logPath, "a");
             fprintf(fp, "%s [*] %s\n", currentTime, msg);
         }
+        else if (type == AUDIT) {
+            fp = fopen(auditPath, "a");
+            fprintf(fp, "%s [#] AUDIT: %s\n", currentTime, msg);
+        }
+        
         fclose(fp);
     }
 }
