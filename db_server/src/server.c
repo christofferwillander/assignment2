@@ -148,8 +148,8 @@ int main(int argc, char* argv[]) {
                 strcat(errPath, ".err");
 
                 auditPath = malloc(strlen(argv[i]) + strlen(".audit") + 1);
-                strcpy(errPath, argv[i]);
-                strcat(errPath, ".audit");
+                strcpy(auditPath, argv[i]);
+                strcat(auditPath, ".audit");
 
                 findCMDParam = NOARG;
             }
@@ -758,7 +758,7 @@ void serverLog(char *msg, int type) {
     }
 
     /* Logging to file */
-    if (logPath != NULL && errPath != NULL) {
+    if (logPath != NULL && errPath != NULL && auditPath != NULL) {
         if (type == SUCCESS) {
             fp = fopen(logPath, "a");
             fprintf(fp, "%s [+] %s\n", currentTime, msg);
