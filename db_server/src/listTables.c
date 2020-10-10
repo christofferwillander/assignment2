@@ -3,6 +3,9 @@
 #include <dirent.h>
 #include <string.h>
 
+#define ERROR 1
+#define SUCCESS 0
+
 extern char databasePath[];
 extern void serverLog(char *msg, int type);
 
@@ -13,7 +16,7 @@ void listTables(int clientSocket) {
 
     /* If database directory could not be opened... */
     if (directory == NULL) {
-        printf("[-] ERROR: Could not open database directory\n");
+        serverLog("ERROR: Could not open database directory", ERROR);
     } /* Else, if directory was successfully opened... */
     else {
         /* While there are files left to iterate through in database directory... */

@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
 
 void serve(int port) {
     int serverSocket, clientSocket;
-    char *error;
+    char *error = NULL, *client = NULL;
     pid_t pid;
 
     /* Sleep timers - used for a more graceful and slow startup/shutdown */
@@ -348,6 +348,7 @@ void serve(int port) {
         if (runServer) {
             /* Forking parent process into child process(es) with fork() in order to handle concurrent client connections */
             if((pid = fork()) == 0) {
+                client = stringConcatenator(clientIP, ":", ntohs(clientAddress.sin_port));
                 
                 if ((sigaction(SIGINT, &ignoreInt, NULL) < 0) || (sigaction(SIGTERM, &ignoreInt, NULL) < 0)) {
                     terminate("Error occurred when setting child signal action (SIGINT, SIGTERM): ");
@@ -461,6 +462,7 @@ void serve(int port) {
                                 free(tempStr2);
                                 
                                 free(receiveBuffer);
+                                free(client);
 
                                 /* Destroy request containing .quit command */
                                 destroy_request(request);
@@ -496,7 +498,7 @@ void serve(int port) {
                                 }
 
                                 /* Send request to request handler to dispatch to proper function */
-                                handleRequest(request, clientSocket);
+                                handleRequest(request, clientSocket, client);
                                 request = NULL;
 
                                 /* Remove blocking of set signals */
@@ -512,7 +514,7 @@ void serve(int port) {
 
                                 /* Process requests - one by one */
                                 for (int i = 0; i < nrOfCommands; i++) {
-                                    handleRequest(requests[i], clientSocket);
+                                    handleRequest(requests[i], clientSocket, client);
                                 }
 
                                 free (requests);
@@ -543,6 +545,7 @@ void serve(int port) {
                         free(tempStr2);
                         
                         free(receiveBuffer);
+                        free(client);
                         exit(EXIT_SUCCESS);
                     }
                 }

@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include "../include/request.h"
 
+#define ERROR 1
+#define SUCCESS 0
+
 #define UNLOCK 0
 #define LOCK 1
 #define WRITE 0
@@ -32,7 +35,7 @@ void writeToFile(FILE *ptr, char *name, char *dataT, int size, int check)
     }
 }
 
-void createTable(request_t *req, int clientSocket)
+int createTable(request_t *req, int clientSocket)
 {
     char *fileName;
     char *cName;
@@ -40,6 +43,7 @@ void createTable(request_t *req, int clientSocket)
     int size = 0;
     char *openFilePath;
     int check = 0;
+    int success = ERROR;
 
     char *filePath = malloc(strlen(databasePath) + strlen(req->table_name) + 1);
     strcpy(filePath, databasePath);
@@ -84,6 +88,9 @@ void createTable(request_t *req, int clientSocket)
         doLock(fileno(file), UNLOCK, WRITE);
         fclose(file);
         send(clientSocket, "Table was succesfully created\n", sizeof("Table was succesfully created\n"), 0);
+        success = SUCCESS;
     }
     free(filePath);
+
+    return success;
 }

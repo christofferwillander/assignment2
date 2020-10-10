@@ -9,13 +9,15 @@
 #define SUCCESS 0
 #define ERROR 1
 #define INFO 2
+#define AUDIT 3
 
 extern char databasePath[];
 extern char *stringConcatenator(char* str1, char* str2, int num);
 extern void serverLog(char* msg, int type);
 
-void handleRequest(request_t *request, int clientSocket) {
-    char *tempStr1 = NULL;
+void handleRequest(request_t *request, int clientSocket, char* client) {
+    char *tempStr1 = NULL, *tempStr2 = NULL;
+    int statusCode = -1;
 
     switch (request->request_type)
         {
@@ -23,7 +25,27 @@ void handleRequest(request_t *request, int clientSocket) {
             tempStr1 = stringConcatenator("CREATE TABLE request received - ", request->table_name, -1);
             serverLog(tempStr1, INFO);
             free(tempStr1);
-            createTable(request, clientSocket);
+            statusCode = createTable(request, clientSocket);
+
+            if (statusCode == SUCCESS) {
+                tempStr1 = stringConcatenator("Succesfully created table ", request->table_name, -1);
+                tempStr2 = stringConcatenator(tempStr1, " - ", -1);
+                free(tempStr1);
+                tempStr1 = stringConcatenator(tempStr2, client, -1);
+                serverLog(tempStr1, AUDIT);
+                free(tempStr1);
+                free(tempStr2);
+            }
+            else if (statusCode == ERROR) {
+                tempStr1 = stringConcatenator("Failed to create table ", request->table_name, -1);
+                tempStr2 = stringConcatenator(tempStr1, " - ", -1);
+                free(tempStr1);
+                tempStr1 = stringConcatenator(tempStr2, client, -1);
+                serverLog(tempStr1, AUDIT);
+                free(tempStr1);
+                free(tempStr2);
+            }
+
             break;
         case RT_TABLES:
             serverLog("Table listing reqeust received", INFO);
@@ -38,14 +60,54 @@ void handleRequest(request_t *request, int clientSocket) {
         case RT_DROP:
             tempStr1 = stringConcatenator("DROP TABLE request received - ", request->table_name, -1);
             serverLog(tempStr1, INFO);
-            drop(request, clientSocket);
             free(tempStr1);
+            statusCode = drop(request, clientSocket);
+
+            if (statusCode == SUCCESS) {
+                tempStr1 = stringConcatenator("Succesfully dropped table ", request->table_name, -1);
+                tempStr2 = stringConcatenator(tempStr1, " - ", -1);
+                free(tempStr1);
+                tempStr1 = stringConcatenator(tempStr2, client, -1);
+                serverLog(tempStr1, AUDIT);
+                free(tempStr1);
+                free(tempStr2);
+            }
+            else if (statusCode == ERROR) {
+                tempStr1 = stringConcatenator("Failed to drop table ", request->table_name, -1);
+                tempStr2 = stringConcatenator(tempStr1, " - ", -1);
+                free(tempStr1);
+                tempStr1 = stringConcatenator(tempStr2, client, -1);
+                serverLog(tempStr1, AUDIT);
+                free(tempStr1);
+                free(tempStr2);
+            }
+
             break;
         case RT_INSERT:
             tempStr1 = stringConcatenator("INSERT to table request received - ", request->table_name, -1);
             serverLog(tempStr1, INFO);
             free(tempStr1);
-            insertToTable(request, clientSocket);
+            statusCode = insertToTable(request, clientSocket);
+
+            if (statusCode == SUCCESS) {
+                tempStr1 = stringConcatenator("Succesfully inserted new row into table ", request->table_name, -1);
+                tempStr2 = stringConcatenator(tempStr1, " - ", -1);
+                free(tempStr1);
+                tempStr1 = stringConcatenator(tempStr2, client, -1);
+                serverLog(tempStr1, AUDIT);
+                free(tempStr1);
+                free(tempStr2);
+            }
+            else if (statusCode == ERROR) {
+                tempStr1 = stringConcatenator("Failed to insert new row into table ", request->table_name, -1);
+                tempStr2 = stringConcatenator(tempStr1, " - ", -1);
+                free(tempStr1);
+                tempStr1 = stringConcatenator(tempStr2, client, -1);
+                serverLog(tempStr1, AUDIT);
+                free(tempStr1);
+                free(tempStr2);
+            }
+
             break;
         case RT_SELECT:
             tempStr1 = stringConcatenator("SELECT FROM table request received - ", request->table_name, -1);

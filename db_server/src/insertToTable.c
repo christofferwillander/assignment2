@@ -5,6 +5,9 @@
 
 #include "../include/request.h"
 
+#define ERROR 1
+#define SUCCESS 0
+
 #define UNLOCK 0
 #define LOCK 1
 #define WRITE 0
@@ -72,7 +75,9 @@ int validateInput(request_t *request, FILE *ptr, int clientSocket) {
         }
         else if (curCol->data_type == DT_VARCHAR) {
             inputTypes[inputCounter] = DT_VARCHAR;
-            inputSizes[inputCounter++] = strlen(curCol->char_val);
+
+            /* Subtracting two from lengtht due to the ' at beginning and end of string */
+            inputSizes[inputCounter++] = strlen(curCol->char_val) - 2;
         }
 
         curCol = curCol->next;
@@ -170,8 +175,10 @@ void insertToFile(FILE *ptr, char *value, int isEOL)
 
 }
 
-void insertToTable(request_t *req, int clientSocket)
+int insertToTable(request_t *req, int clientSocket)
 {
+    int success = ERROR;
+
     char *intValue;
     char *charValue;
     int columnCount = 0;
@@ -227,11 +234,13 @@ void insertToTable(request_t *req, int clientSocket)
                 temp = end;   
             }
             send(clientSocket, "Successfully added to table\n", sizeof("Successfully added to table\n"), 0);
-            
+            success = SUCCESS;    
         }
         doLock(fileno(file), UNLOCK, WRITE);
         fclose(file);
     }
 
     free(filePath);
+
+    return success;
 }
