@@ -4,8 +4,10 @@
 #include <unistd.h>
 #include "../include/request.h"
 
-#define ERROR 1
 #define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+#define AUDIT 3
 
 #define UNLOCK 0
 #define LOCK 1
@@ -15,7 +17,7 @@
 extern void doLock(int fd, int lock, int lockType);
 extern char databasePath[];
 
-void writeToFile(FILE *ptr, char *name, char *dataT, int size, int check)
+void writeToFile(FILE *ptr, char *name, char *dataT, int size, int isEOL)
 {
     char charSize[10];
 
@@ -29,7 +31,7 @@ void writeToFile(FILE *ptr, char *name, char *dataT, int size, int check)
         fputs(charSize, ptr);
         fputs(":", ptr);
     }
-    if(check == 1)
+    if(isEOL == 1)
     {
         fputs("\n",ptr);
     }
@@ -42,7 +44,7 @@ int createTable(request_t *req, int clientSocket)
     char *dataType;
     int size = 0;
     char *openFilePath;
-    int check = 0;
+    int isEOL = 0;
     int success = ERROR;
 
     char *filePath = malloc(strlen(databasePath) + strlen(req->table_name) + 1);
@@ -64,7 +66,7 @@ int createTable(request_t *req, int clientSocket)
         {
             if(temp->next == NULL)
             {
-                check = 1;
+                isEOL = 1;
             }
             cName=temp->name;
             if(temp->data_type != 0)
@@ -79,7 +81,7 @@ int createTable(request_t *req, int clientSocket)
                 dataType="INT";
             }
 
-            writeToFile(file, cName, dataType, size, check);
+            writeToFile(file, cName, dataType, size, isEOL);
 
             end=temp->next;
             temp = end;   

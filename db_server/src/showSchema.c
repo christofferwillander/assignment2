@@ -5,6 +5,11 @@
 
 #include "../include/request.h"
 
+#define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+#define AUDIT 3
+
 #define UNLOCK 0
 #define LOCK 1
 #define WRITE 0

@@ -4,6 +4,11 @@
 #include <unistd.h>
 #include "../include/request.h"
 
+#define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+#define AUDIT 3
+
 #define UNLOCK 0
 #define LOCK 1
 #define WRITE 0
@@ -20,7 +25,7 @@ void selectTable(request_t *req, int clientSocket)
 
     if(access(filePath, F_OK) == -1)
     {
-        send(clientSocket, "ERROR: Table does not exist\n", strlen("ERROR: Table does not exist\n"), 0);
+        send(clientSocket, "ERROR: Table does not exist\n", sizeof("ERROR: Table does not exist\n"), 0);
     }
     else
     {

@@ -5,8 +5,10 @@
 
 #include "../include/request.h"
 
-#define ERROR 1
 #define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+#define AUDIT 3
 
 #define UNLOCK 0
 #define LOCK 1
@@ -38,11 +40,11 @@ int drop(request_t *req, int clientSocket)
         if (!del)
         {
             success = SUCCESS;
-            send(clientSocket, "The table was removed successfully\n", strlen("The table was removed successfully\n"), 0 );
+            send(clientSocket, "The table was removed successfully\n", sizeof("The table was removed successfully\n"), 0 );
         }
         else
         {
-            send(clientSocket, "The table could not be removed\n", strlen("The table could not be removed\n"), 0 );
+            send(clientSocket, "The table could not be removed\n", sizeof("The table could not be removed\n"), 0 );
         }
         
         fclose(file);

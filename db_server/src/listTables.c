@@ -3,8 +3,10 @@
 #include <dirent.h>
 #include <string.h>
 
-#define ERROR 1
 #define SUCCESS 0
+#define ERROR 1
+#define INFO 2
+#define AUDIT 3
 
 extern char databasePath[];
 extern void serverLog(char *msg, int type);

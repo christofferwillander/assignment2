@@ -48,7 +48,7 @@ void handleRequest(request_t *request, int clientSocket, char* client) {
 
             break;
         case RT_TABLES:
-            serverLog("Table listing reqeust received", INFO);
+            serverLog("Table listing request received", INFO);
             listTables(clientSocket);
             break;
         case RT_SCHEMA:

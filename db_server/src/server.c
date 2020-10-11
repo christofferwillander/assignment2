@@ -50,6 +50,7 @@ volatile sig_atomic_t runChildren = 1;
 
 /* Data structures for keeping track of child processes */
 int *childArray = NULL;
+const int sizeIncrease = 10;
 int childCtr = 0;
 int allocCtr = 0;
 
@@ -721,83 +722,92 @@ void serverLog(char *msg, int type) {
 
     strftime(currentTime, 25, "%Y-%m-%d %H:%M:%S", hrTime);
 
-    /* Logging to syslog and to terminal */
-    if (type == SUCCESS) {
-        syslog(LOG_NOTICE, "%s", msg);
-
-        buf = malloc(strlen(currentTime) + strlen(" [+] ") + strlen(msg) + strlen("\n") + 1);
-        sprintf(buf, "%s [+] %s\n", currentTime, msg);
-        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
-        free(buf);
-        buf = NULL;
-    }
-    else if (type == ERROR) {
-        syslog(LOG_ERR, "%s", msg);
-        
-        buf = malloc(strlen(currentTime) + strlen(" [-] ") + strlen(msg) + strlen("\n") + 1);
-        sprintf(buf, "%s [-] %s\n", currentTime, msg);
-        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
-        free(buf);
-        buf = NULL;
-    }
-    else if (type == INFO) {
-        syslog(LOG_INFO, "%s\n", msg);
-        
-        buf = malloc(strlen(currentTime) + strlen(" [*] ") + strlen(msg) + strlen("\n") + 1);
-        sprintf(buf, "%s [*] %s\n", currentTime, msg);
-        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
-        free(buf);
-        buf = NULL;
-    }
-    else if (type == AUDIT) {
-        syslog(LOG_INFO, "%s\n", msg);
-        buf = malloc(strlen(currentTime) + strlen(" [#] AUDIT: ") + strlen(msg) + strlen("\n") + 1);
-        sprintf(buf, "%s [#] AUDIT: %s\n", currentTime, msg);
-        write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
-        free(buf);
-        buf = NULL;
-    }
-
-    /* Logging to file */
-    if (logPath != NULL && errPath != NULL && auditPath != NULL) {
+    if (msg != NULL) {
+        /* Logging to syslog and to terminal */
         if (type == SUCCESS) {
-            fp = fopen(logPath, "a");
-            fprintf(fp, "%s [+] %s\n", currentTime, msg);
+            syslog(LOG_NOTICE, "%s", msg);
+
+            buf = malloc(strlen(currentTime) + strlen(" [+] ") + strlen(msg) + strlen("\n") + 1);
+            sprintf(buf, "%s [+] %s\n", currentTime, msg);
+            write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+            free(buf);
+            buf = NULL;
         }
         else if (type == ERROR) {
-            fp = fopen(errPath, "a");
-            fprintf(fp, "%s [-] %s\n", currentTime, msg);
+            syslog(LOG_ERR, "%s", msg);
+            
+            buf = malloc(strlen(currentTime) + strlen(" [-] ") + strlen(msg) + strlen("\n") + 1);
+            sprintf(buf, "%s [-] %s\n", currentTime, msg);
+            write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+            free(buf);
+            buf = NULL;
         }
         else if (type == INFO) {
-            fp = fopen(logPath, "a");
-            fprintf(fp, "%s [*] %s\n", currentTime, msg);
+            syslog(LOG_INFO, "%s\n", msg);
+            
+            buf = malloc(strlen(currentTime) + strlen(" [*] ") + strlen(msg) + strlen("\n") + 1);
+            sprintf(buf, "%s [*] %s\n", currentTime, msg);
+            write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+            free(buf);
+            buf = NULL;
         }
         else if (type == AUDIT) {
-            fp = fopen(auditPath, "a");
-            fprintf(fp, "%s [#] AUDIT: %s\n", currentTime, msg);
+            syslog(LOG_INFO, "%s\n", msg);
+            buf = malloc(strlen(currentTime) + strlen(" [#] AUDIT: ") + strlen(msg) + strlen("\n") + 1);
+            sprintf(buf, "%s [#] AUDIT: %s\n", currentTime, msg);
+            write(STDOUT_FILENO, &buf[0], strlen(buf) + 1);
+            free(buf);
+            buf = NULL;
         }
-        
-        fclose(fp);
+
+        /* Logging to file */
+        if (logPath != NULL && errPath != NULL && auditPath != NULL) {
+            if (type == SUCCESS) {
+                fp = fopen(logPath, "a");
+                fprintf(fp, "%s [+] %s\n", currentTime, msg);
+            }
+            else if (type == ERROR) {
+                fp = fopen(errPath, "a");
+                fprintf(fp, "%s [-] %s\n", currentTime, msg);
+            }
+            else if (type == INFO) {
+                fp = fopen(logPath, "a");
+                fprintf(fp, "%s [*] %s\n", currentTime, msg);
+            }
+            else if (type == AUDIT) {
+                fp = fopen(auditPath, "a");
+                fprintf(fp, "%s [#] AUDIT: %s\n", currentTime, msg);
+            }
+            
+            fclose(fp);
+        }
     }
 }
 
 char *stringConcatenator(char *str1, char *str2, int num) {
     char *concatStr = NULL;
     char numStr[10];
-
-    /* If no number placeholder is present in string */
-    if (num == -1) {
-        concatStr = malloc(strlen(str1) + strlen(str2) + 1);
-        strcpy(concatStr, str1);
-        strcat(concatStr, str2);
+    if (str1 != NULL && str2!= NULL) {
+        /* If no number placeholder is present in string */
+        if (num == -1) {
+            concatStr = malloc(strlen(str1) + strlen(str2) + 1);
+            strcpy(concatStr, str1);
+            strcat(concatStr, str2);
+        }
+        else { /* Else if number is to be inserted (in end of string) */
+            concatStr = malloc(strlen(str1) + strlen(str2) + 11);
+            sprintf(numStr, "%d", num);
+            strcpy(concatStr, str1);
+            strcat(concatStr, str2);
+            strcat(concatStr, numStr);
+        }
     }
-    else { /* Else if number is to be inserted (in end of string) */
-        concatStr = malloc(strlen(str1) + strlen(str2) + 11);
-        sprintf(numStr, "%d", num);
-        strcpy(concatStr, str1);
-        strcat(concatStr, str2);
-        strcat(concatStr, numStr);
+    else
+    {
+        concatStr = malloc(sizeof("Attempt of empty string (NULL) concatenation detected"));
+        strcpy(concatStr, "Attempt of empty string (NULL) concatenation detected");
     }
+    
 
     return concatStr;
 }
@@ -959,20 +969,28 @@ void addChild(pid_t pid) {
     int *oldPtr = NULL;
 
     if (childArray == NULL && allocCtr == 0) {
-        printf("Allokerar nytt minne\n");
-        childArray = malloc(sizeof(int)*10);
-        allocCtr = 10;
+        tempStr1 = stringConcatenator("Allocating new memory for children array - initial size: ", "", sizeIncrease);
+        serverLog(tempStr1, INFO);
+        free(tempStr1);
+        childArray = malloc(sizeof(int)*sizeIncrease);
+        allocCtr = sizeIncrease;
     }
 
     if ((childCtr + 1) > allocCtr) {
         oldPtr = childArray;
-        if((childArray = realloc(childArray, (sizeof(int) * (childCtr + 10)))) == NULL) {
+        if((childArray = realloc(childArray, (sizeof(int) * (childCtr + sizeIncrease)))) == NULL) {
             free(oldPtr);
             terminate("Something went very wrong: ");
         }
         else
         {
-            allocCtr += 10;
+            tempStr1 = stringConcatenator("Allocated more memory for children array - old size: ", "", allocCtr);
+            tempStr2 = stringConcatenator(tempStr1, ", new size: ", (allocCtr + sizeIncrease));
+            serverLog(tempStr2, INFO);
+            free(tempStr1);
+            free(tempStr2);
+
+            allocCtr += sizeIncrease;
             oldPtr = NULL;
         }
     }
@@ -988,6 +1006,7 @@ void addChild(pid_t pid) {
 
 void removeChild(pid_t pid){
     char *tempStr1 = NULL, *tempStr2 = NULL;
+    int *oldPtr = NULL;
     if (childArray != NULL) {
         int foundPos = -1;
         for (int i = 0; (i < childCtr) && foundPos == -1; i++) {
@@ -1015,10 +1034,29 @@ void removeChild(pid_t pid){
         }
     }
     
-    if (childCtr == 0) {
+    if (childCtr == 0 && childArray != NULL) {
+        serverLog("Freeing allocated memory for children array", INFO);
         free(childArray);
         childArray = NULL;
         allocCtr = 0;
+    }
+    else if ((childCtr <= (allocCtr - sizeIncrease)) && childArray != NULL && runServer) {
+        oldPtr = childArray;
+        if((childArray = realloc(childArray, (sizeof(int) * (allocCtr - sizeIncrease)))) == NULL) {
+            free(oldPtr);
+            terminate("Something went very wrong: ");
+        }
+        else
+        {
+            tempStr1 = stringConcatenator("Shrunk allocated memory for children array - old size: ", "", allocCtr);
+            tempStr2 = stringConcatenator(tempStr1, ", new size: ", (allocCtr - sizeIncrease));
+            serverLog(tempStr2, INFO);
+            free(tempStr1);
+            free(tempStr2);
+
+            allocCtr -= sizeIncrease;
+            oldPtr = NULL;
+        }
     }
 }
 
@@ -1053,8 +1091,8 @@ void terminateChildren() {
     }
 
     /* If all children have been terminated - free childArray memory */
-    if (childCtr == 0) {
-        serverLog("Freeing allocated memory to child array", INFO);
+    if (childCtr == 0 && childArray != NULL) {
+        serverLog("Freeing allocated memory for children array", INFO);
         free(childArray);
         childArray = NULL;
         allocCtr = 0;
